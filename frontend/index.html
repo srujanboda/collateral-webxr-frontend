@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div id="info">Tap "Start Camera" to begin measuring.</div>
+  <div id="info">Connecting to backend...</div>
 
   <button id="startBtn" style="
     position:absolute;
@@ -36,6 +36,36 @@
     height:100vh;
     pointer-events:none;
   "></canvas>
+
+  <!-- ADD SOCKET.IO -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+
+  <script>
+      // Your backend URL
+      const backendURL = "https://collateral-webxr.onrender.com";
+
+      // Connect to backend
+      const socket = io(backendURL, {
+          transports: ["websocket"], 
+          reconnection: true
+      });
+
+      socket.on("connect", () => {
+          document.getElementById("info").innerText = "Connected to backend! ✅";
+          console.log("Connected:", socket.id);
+
+          // Test message
+          socket.emit("test_message", { msg: "Hello from frontend!" });
+      });
+
+      socket.on("disconnect", () => {
+          document.getElementById("info").innerText = "Disconnected ❌";
+      });
+
+      socket.on("response", (data) => {
+          console.log("Backend response:", data);
+      });
+  </script>
 
   <script src="js/opencvMeasure.js"></script>
 </body>
