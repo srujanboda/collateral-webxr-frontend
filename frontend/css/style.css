@@ -1,0 +1,35 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  background: #000;
+  color: white;
+}
+
+#info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 10;
+}
+
+#videoFeed {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+canvas#overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}

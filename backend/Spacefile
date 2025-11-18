@@ -1,0 +1,6 @@
+name: webxr-backend
+engine: python3.10
+include:
+  - server/
+  - requirements.txt
+run: python server/server.py

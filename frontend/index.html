@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Measurement</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="info">Tap "Start Camera" to begin measuring.</div>
+
+  <button id="startBtn" style="
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    padding:12px 20px;
+    font-size:16px;
+    border:none;
+    border-radius:8px;
+    background-color:#007bff;
+    color:white;
+  ">Start Camera</button>
+
+  <video id="videoFeed" autoplay playsinline muted style="
+    display:none;
+    width:100vw;
+    height:100vh;
+    object-fit:cover;
+  "></video>
+
+  <canvas id="overlay" style="
+    position:absolute;
+    top:0; left:0;
+    width:100vw;
+    height:100vh;
+    pointer-events:none;
+  "></canvas>
+
+  <script src="js/opencvMeasure.js"></script>
+</body>
+</html>
