@@ -37,16 +37,15 @@
     pointer-events:none;
   "></canvas>
 
-  <!-- ADD SOCKET.IO -->
+  <!-- SOCKET.IO -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 
   <script>
-      // Your backend URL
       const backendURL = "https://collateral-webxr.onrender.com";
 
       // Connect to backend
       const socket = io(backendURL, {
-          transports: ["websocket"], 
+          transports: ["websocket"],
           reconnection: true
       });
 
@@ -54,19 +53,28 @@
           document.getElementById("info").innerText = "Connected to backend! ✅";
           console.log("Connected:", socket.id);
 
-          // Test message
-          socket.emit("test_message", { msg: "Hello from frontend!" });
+          // AUTO JOIN ROOM (IMPORTANT)
+          socket.emit("join", "room1");
       });
 
-      socket.on("disconnect", () => {
-          document.getElementById("info").innerText = "Disconnected ❌";
+      socket.on("ready", () => {
+          console.log("Other user joined — WebRTC ready");
       });
 
-      socket.on("response", (data) => {
-          console.log("Backend response:", data);
+      socket.on("offer", (desc) => {
+          console.log("Received offer", desc);
+      });
+
+      socket.on("answer", (desc) => {
+          console.log("Received answer", desc);
+      });
+
+      socket.on("candidate", (candidate) => {
+          console.log("Received ICE candidate", candidate);
       });
   </script>
 
   <script src="js/opencvMeasure.js"></script>
 </body>
 </html>
+
