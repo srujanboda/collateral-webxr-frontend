@@ -1,152 +1,130 @@
-// webrtc.js — signaling for Flask-SocketIO backend
+// ----------------------------------------------
+// WebRTC + Socket.IO Signaling (Fixed for Render)
+// ----------------------------------------------
 
-// ⚠️ ACTION REQUIRED: REPLACE THIS WITH YOUR DEPLOYED BACKEND URL (HTTPS/WSS)
-const BACKEND_URL = "https://YOUR-DEPLOYED-BACKEND-URL-HERE.com";
-const socket = io(BACKEND_URL, {
-  transports: ["websocket"], // faster startup
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
+const SIGNALING_SERVER = "https://collateral-webxr.onrender.com";
+
+// Force websocket transport for Render + Socket.IO
+const socket = io(SIGNALING_SERVER, {
+    transports: ["websocket"],
+    reconnection: true,
+    reconnectionAttempts: 10,
 });
 
-let localStream;
-let peerConnection;
-let roomName = "default-room"; // can randomize for multiple sessions
+// Room name (can be customized)
+const ROOM_ID = "default-room";
 
-// STUN configuration (Google public)
-const configuration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+// Join signaling room
+socket.emit("join", ROOM_ID);
 
-// === INIT ===
-export async function initWebRTC(videoElementId = "videoFeed") {
-  try {
+// Debug logs
+socket.on("connect", () => {
+    console.log("✅ Connected to signaling server");
+});
+
+// When another peer joins, backend sends "ready"
+socket.on("ready", () => {
+    console.log("📡 Peer ready — sending offer");
+    if (pc) {
+        createOffer();
+    }
+});
+
+// Receive offer → set remote description → respond with answer
+socket.on("offer", async (desc) => {
+    console.log("📡 Received offer");
+    await pc.setRemoteDescription(desc);
+    await createAnswer();
+});
+
+// Receive answer → complete handshake
+socket.on("answer", async (desc) => {
+    console.log("📡 Received answer");
+    await pc.setRemoteDescription(desc);
+});
+
+// ICE candidate exchange
+socket.on("candidate", async (candidate) => {
+    console.log("🌐 Received ICE candidate");
+    if (candidate) {
+        try {
+            await pc.addIceCandidate(candidate);
+        } catch (err) {
+            console.error("🔥 ICE add error:", err);
+        }
+    }
+});
+
+// ---------------------------------------------------------
+// WebRTC Peer Connection Setup
+// ---------------------------------------------------------
+
+let pc = null;
+let localStream = null;
+
+// Call this function when starting AR session or camera preview
+async function startConnection() {
+    console.log("🎥 Starting camera + peer connection");
+
     localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: false,
+        video: true,
+        audio: false,
     });
 
-    const localVideo = document.getElementById(videoElementId);
-    localVideo.srcObject = localStream;
-    localVideo.style.display = "block";
-    console.log("✅ Local stream ready");
-  } catch (err) {
-    console.error("Error accessing camera:", err);
-  }
+    pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" }
+        ]
+    });
 
-  // Join signaling room
-  socket.emit("join", roomName);
-  console.log("📡 Joined signaling room:", roomName);
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-  // Basic connection check
-  socket.on("connect", () => console.log("🔌 Connected to signaling server"));
-  socket.on("connect_error", (err) => console.error("⚠️ Socket error:", err));
-  socket.on("disconnect", (reason) => console.warn("Socket disconnected:", reason));
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            console.log("🌐 Sending ICE candidate");
+            socket.emit("candidate", {
+                room: ROOM_ID,
+                candidate: event.candidate
+            });
+        }
+    };
 
-  // When another peer joins
-  socket.on("ready", async () => {
-    console.log("👥 Peer is ready, creating offer...");
-    createPeerConnection();
-    addLocalTracks();
-
-    try {
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      socket.emit("offer", { description: offer, room: roomName });
-    } catch (err) {
-      console.error("Error creating offer:", err);
-    }
-  });
-
-  // When offer is received
-  socket.on("offer", async (description) => {
-    console.log("📩 Offer received");
-    createPeerConnection();
-    addLocalTracks();
-
-    try {
-      await peerConnection.setRemoteDescription(description);
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      socket.emit("answer", { description: answer, room: roomName });
-    } catch (err) {
-      console.error("Error handling offer:", err);
-    }
-  });
-
-  // When answer is received
-  socket.on("answer", async (description) => {
-    console.log("📩 Answer received");
-    try {
-      await peerConnection.setRemoteDescription(description);
-    } catch (err) {
-      console.error("Error setting remote description:", err);
-    }
-  });
-
-  // ICE candidates
-  socket.on("candidate", async (candidate) => {
-    if (peerConnection && candidate) {
-      try {
-        await peerConnection.addIceCandidate(candidate);
-      } catch (err) {
-        console.error("Error adding ICE candidate:", err);
-      }
-    }
-  });
-
-  // Handle cleanup on window unload
-  window.addEventListener("beforeunload", cleanup);
+    pc.ontrack = (event) => {
+        const remoteVideo = document.getElementById("remoteVideo");
+        if (remoteVideo) {
+            remoteVideo.srcObject = event.streams[0];
+        }
+    };
 }
 
-// === Helper Functions ===
+// ---------------------------------------------------------
+// Offer / Answer functions
+// ---------------------------------------------------------
 
-function createPeerConnection() {
-  if (peerConnection) return;
-  peerConnection = new RTCPeerConnection(configuration);
+async function createOffer() {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
 
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("candidate", { candidate: event.candidate, room: roomName });
-    }
-  };
-
-  peerConnection.ontrack = (event) => {
-    let remoteVideo = document.getElementById("remoteVideo");
-    if (!remoteVideo) {
-      remoteVideo = document.createElement("video");
-      remoteVideo.id = "remoteVideo";
-      remoteVideo.autoplay = true;
-      remoteVideo.playsInline = true;
-      Object.assign(remoteVideo.style, {
-        position: "absolute",
-        top: "0",
-        right: "0",
-        width: "30%",
-        border: "2px solid white",
-        zIndex: "9999",
-      });
-      document.body.appendChild(remoteVideo);
-    }
-    remoteVideo.srcObject = event.streams[0];
-    remoteVideo.style.display = "block";
-  };
+    console.log("📡 Sending offer");
+    socket.emit("offer", {
+        room: ROOM_ID,
+        description: offer,
+    });
 }
 
-function addLocalTracks() {
-  if (!localStream || !peerConnection) return;
-  localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+async function createAnswer() {
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    console.log("📡 Sending answer");
+    socket.emit("answer", {
+        room: ROOM_ID,
+        description: answer,
+    });
 }
 
-function cleanup() {
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
-  socket.disconnect();
-  console.log("🧹 WebRTC session cleaned up.");
-}
+// ---------------------------------------------------------
+// Export functions to global scope if needed
+// ---------------------------------------------------------
+
+window.startConnection = startConnection;
