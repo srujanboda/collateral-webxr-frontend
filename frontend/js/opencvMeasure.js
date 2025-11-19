@@ -38,36 +38,48 @@ function onCanvasClick(event) {
   const y = event.clientY - rect.top;
 
   points.push({ x, y });
-  draw();
+
+  if (points.length > 2) points.shift(); // keep only 2 points
+
+  drawOverlay();
 
   if (points.length === 2) {
     const dist = calcDistance(points[0], points[1]);
-    info.textContent = `Approx distance: ${dist.toFixed(2)} m (tap again to reset)`;
-    points = [];
+    info.textContent = `Approx distance: ${dist.toFixed(2)} m (tap to reset)`;
   }
 }
 
-function draw() {
+// === Drawing function (from my corrected version) ===
+function drawOverlay() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'lime';
-  ctx.strokeStyle = 'red';
-  ctx.lineWidth = 2;
 
-  points.forEach(p => ctx.beginPath() || ctx.arc(p.x, p.y, 6, 0, Math.PI * 2) || ctx.fill());
+  // draw green points
+  points.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "lime";
+    ctx.fill();
+  });
 
+  // draw yellow line
   if (points.length === 2) {
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     ctx.lineTo(points[1].x, points[1].y);
+    ctx.strokeStyle = "yellow";
+    ctx.lineWidth = 3;
     ctx.stroke();
   }
 }
 
+// === Distance calculation (your logic kept same) ===
 function calcDistance(p1, p2) {
   const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  const approxFOV = 60; // degrees
+
+  const approxFOV = 60;  
   const width = video.videoWidth;
-  const distanceToPlane = 0.5; // assume 0.5m from camera to object
+  const distanceToPlane = 0.5;
   const pixelToMeter = (2 * distanceToPlane * Math.tan((approxFOV / 2) * Math.PI / 180)) / width;
+
   return pixelDist * pixelToMeter;
 }
