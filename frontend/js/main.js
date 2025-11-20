@@ -1,29 +1,41 @@
-// js/main.js
-console.log("main.js loaded");
+// js/main.js  ← FINAL WORKING VERSION
+console.log("main.js: Starting...");
 
 async function supportsWebXR() {
   if (!navigator.xr) return false;
-  return await navigator.xr.isSessionSupported("immersive-ar").catch(() => false);
+  try {
+    return await navigator.xr.isSessionSupported("immersive-ar");
+  } catch {
+    return false;
+  }
 }
 
 (async () => {
   const info = document.getElementById("info");
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
 
-  // Update UI immediately
-  document.getElementById("startBtn").textContent = "Checking Device...";
-  
+  info.textContent = "Detecting device...";
+  startBtn.disabled = true;
+
   const xrSupported = await supportsWebXR();
 
   if (xrSupported) {
-    info.textContent = "AR Mode Ready! Tap Start";
-    console.log("WebXR supported → will load AR");
-    document.getElementById("startBtn").onclick = () => import("./app.js");
+    info.textContent = "AR Mode Ready! Tap to start";
+    startBtn.textContent = "Start AR Measurement";
+    startBtn.onclick = () => import("./app.js");  // AR mode
   } else {
-    info.textContent = "Using 2D Camera Mode";
-    console.log("No WebXR → using camera fallback");
-    document.getElementById("startBtn").onclick = () => import("./opencvMeasure.js");
+    info.textContent = "2D Camera Mode";
+    startBtn.textContent = "Start Camera";
+    // Load AND run the 2D fallback immediately when button is clicked
+    startBtn.onclick = async () => {
+      startBtn.style.display = "none";
+      resetBtn.style.display = "block";
+      info.textContent = "Opening camera...";
+      const module = await import("./opencvMeasure.js");
+      // The module itself starts the camera
+    };
   }
 
-  // Now re-enable the button
-  document.getElementById("startBtn").textContent = "Start Camera";
+  startBtn.disabled = false;
 })();
