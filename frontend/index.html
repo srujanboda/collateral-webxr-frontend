@@ -36,9 +36,22 @@
     left:0;
     width:100vw;
     height:100vh;
-    pointer-events:auto;
-"></canvas>
+    pointer-events:none; /* Start disabled */
+  "></canvas>
 
+  <button id="resetBtn" style="
+    position:absolute;
+    bottom:20px;
+    left:50%;
+    transform:translateX(-50%);
+    padding:10px 16px;
+    font-size:14px;
+    border:none;
+    border-radius:8px;
+    background-color:#dc3545;
+    color:white;
+    display:none;
+  ">Reset Measurement</button>
 
   <!-- SOCKET.IO (ONLY FOR BACKEND CONNECTION) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
@@ -53,10 +66,7 @@
       });
   </script>
 
-  <!-- Measurement System -->
-  <script src="js/opencvMeasure.js"></script>
-
+  <!-- Load main.js for AR detection and dynamic script loading -->
+  <script src="js/main.js"></script>
 </body>
 </html>
-
-
