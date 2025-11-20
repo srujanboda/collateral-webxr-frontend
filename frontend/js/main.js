@@ -29,12 +29,14 @@ async function supportsWebXR() {
     startBtn.textContent = "Start Camera";
     // Load AND run the 2D fallback immediately when button is clicked
     startBtn.onclick = async () => {
-      startBtn.style.display = "none";
-      resetBtn.style.display = "block";
-      info.textContent = "Opening camera...";
-      const module = await import("./opencvMeasure.js");
-      // The module itself starts the camera
-    };
+  try {
+    await import("./app.js");
+  } catch (e) {
+    console.error("AR failed:", e);
+    info.textContent = "AR not supported — switching to 2D Camera";
+    await import("./opencvMeasure.js");
+  }
+};
   }
 
   startBtn.disabled = false;
