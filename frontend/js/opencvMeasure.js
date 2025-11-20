@@ -10,21 +10,39 @@ let isReady = false; // Flag for video ready
 
 startBtn.addEventListener('click', async () => {
   startBtn.style.display = 'none';
-  info.textContent = 'Tap on points to measure (connect with line). Use Reset to clear.';
+  info.textContent = 'Requesting camera access...';
 
   const success = await startCamera();
-  if (!success) return;
+  if (!success) {
+    info.textContent = 'Camera failed. Check console for details.';
+    startBtn.style.display = 'block'; // Retry option
+    return;
+  }
 
-  // Wait for video to load dimensions
+  // Force video to play and wait for dimensions
+  video.play().catch(e => {
+    console.error('Video play error:', e);
+    info.textContent = 'Video playback failed (autoplay blocked?).';
+  });
+
   video.addEventListener('loadedmetadata', () => {
+    console.log(`Video ready: ${video.videoWidth}x${video.videoHeight}`); // Debug log
     resizeCanvas();
     isReady = true;
-    canvas.style.pointerEvents = 'auto'; // Enable clicks now
-    info.textContent += ' Ready! Tap screen.';
-    draw(); // Initial clear
+    canvas.style.pointerEvents = 'auto';
+    video.style.display = 'block'; // Ensure visible
+    info.textContent = 'Tap screen to place points! (Console: Check logs)';
+    draw();
   }, { once: true });
 
-  video.style.display = 'block';
+  // Fallback: Poll for dimensions if loadedmetadata doesn't fire (rare)
+  let pollInterval = setInterval(() => {
+    if (video.videoWidth > 0 && !isReady) {
+      clearInterval(pollInterval);
+      video.dispatchEvent(new Event('loadedmetadata'));
+    }
+  }, 100);
+
   window.addEventListener('resize', resizeCanvas);
 
   resetBtn.style.display = 'block';
@@ -37,19 +55,34 @@ startBtn.addEventListener('click', async () => {
 
 async function startCamera() {
   try {
+    console.log('Requesting camera...'); // Debug
     const stream = await navigator.mediaDevices.getUserMedia({ 
       video: { 
-        facingMode: 'environment', // Prefer back camera on mobile
+        facingMode: 'environment', // Back camera on mobile
         width: { ideal: 1280 },
         height: { ideal: 720 }
       } 
     });
+    console.log('Stream granted:', stream.getVideoTracks().length, 'tracks'); // Debug
     video.srcObject = stream;
     return true;
   } catch (e) {
-    console.error('Camera error:', e);
-    info.textContent = 'Camera access denied ❌. Check permissions.';
-    startBtn.style.display = 'block'; // Show button again
+    console.error('getUserMedia error:', e.name, e.message); // Always log
+    let userMsg = 'Camera error: ';
+    switch (e.name) {
+      case 'NotAllowedError':
+        userMsg += 'Permission denied. Enable in browser settings.';
+        break;
+      case 'NotFoundError':
+        userMsg += 'No camera detected. Try mobile device.';
+        break;
+      case 'NotReadableError':
+        userMsg += 'Camera in use by another app.';
+        break;
+      default:
+        userMsg += e.message;
+    }
+    info.textContent = userMsg + ' ❌';
     return false;
   }
 }
