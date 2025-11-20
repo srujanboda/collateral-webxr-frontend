@@ -1,4 +1,4 @@
-// app.js - Full Updated Version with Multi-Point Polyline + Reset
+// app.js - Enhanced AR Hit-Test for ANY Surface (Floors, Walls, Books, etc.)
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
@@ -9,7 +9,7 @@ let referenceSpace = null;
 
 let measurementPoints = [];
 let pointMeshes = [];
-let polyline = null;  // Single Line object for all points
+let polyline = null;  // Polyline for connecting all points
 
 init();
 animate();
@@ -30,62 +30,56 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
- // BEST VERSION — Works perfectly on iOS & Android
-let arButton;
-
-if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-  // Customize button BEFORE creating it
-  arButton = ARButton.createButton(renderer, {
-    requiredFeatures: ['hit-test'],
-    optionalFeatures: ['dom-overlay'],
-    domOverlay: { root: document.body },
-    sessionInit: {
-      // Optional: better iOS behavior
-      optionalFeatures: ['dom-overlay', 'hit-test']
-    }
-  });
-
-  // Now safely change text & style — works because we do it right after creation
-  arButton.textContent = 'Start AR Measurement';
-  arButton.style.fontSize = '18px';
-  arButton.style.padding = '16px 24px';
-  arButton.style.borderRadius = '12px';
-  arButton.style.background = '#007AFF';
-  arButton.style.color = 'white';
-  arButton.style.fontWeight = 'bold';
-} else {
-  // Desktop fallback (no mobile styling)
-  arButton = ARButton.createButton(renderer, {
-    requiredFeatures: ['hit-test'],
-    domOverlay: { root: document.body }
-  });
-}
+  // Enhanced AR Button for Mobile
+  let arButton;
+  if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    arButton = ARButton.createButton(renderer, {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'bounded-depth'],  // Better for small objects
+      domOverlay: { root: document.body },
+      sessionInit: {
+        optionalFeatures: ['dom-overlay', 'hit-test', 'bounded-depth']
+      }
+    });
+    arButton.textContent = 'Start AR Measurement (Scan Surfaces)';
+    arButton.style.fontSize = '18px';
+    arButton.style.padding = '16px 24px';
+    arButton.style.borderRadius = '12px';
+    arButton.style.background = '#007AFF';
+    arButton.style.color = 'white';
+    arButton.style.fontWeight = 'bold';
+  } else {
+    arButton = ARButton.createButton(renderer, {
+      requiredFeatures: ['hit-test'],
+      domOverlay: { root: document.body }
+    });
+  }
   document.body.appendChild(arButton);
-  renderer.xr.addEventListener('sessionstart', () => {
-  arButton.style.display = 'none';
-});
-renderer.xr.addEventListener('sessionend', () => {
-  arButton.style.display = 'block';
-});
-  // Lighting
+
+  // Lighting (brighter for better visibility)
   const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
   scene.add(light);
 
-  // Reticle (where you'll place points)
+  // Enhanced Reticle (Cursor) — Visible + Glows on ANY Hit
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.8, transparent: true })
+    new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00, 
+      opacity: 0.8, 
+      transparent: true,
+      emissive: 0x004400  // Glow effect
+    })
   );
   reticle.matrixAutoUpdate = false;
-  reticle.visible = false;
+  reticle.visible = true;  // Always show cursor, but pulse on hit
   scene.add(reticle);
 
-  // Controller for tap/select
+  // Controller for taps
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
 
-  // Reset on double tap (or add a button later)
+  // Double-tap reset
   let lastTap = 0;
   controller.addEventListener('select', () => {
     const currentTime = Date.now();
@@ -97,17 +91,22 @@ renderer.xr.addEventListener('sessionend', () => {
 
   window.addEventListener('resize', onWindowResize);
 
-  // Initial message
-  document.getElementById('info').textContent = 'Point device at surface → Tap to place points';
+  // Scan Instructions
+  document.getElementById('info').innerHTML = `
+    <strong>AR Ready!</strong><br>
+    Scan room (move phone slowly) to detect walls/books/tables.<br>
+    Point & tap to place dot. Yellow line connects them.<br>
+    <small>Double-tap to reset</small>
+  `;
 }
 
 function onSelect() {
-  if (!reticle.visible) return;
+  if (!reticle.visible || measurementPoints.length > 20) return;  // Limit points
 
   const pos = new THREE.Vector3();
   pos.setFromMatrixPosition(reticle.matrix);
 
-  // Add green sphere
+  // Green sphere dot
   const sphere = new THREE.Mesh(
     new THREE.SphereGeometry(0.015, 16, 16),
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
@@ -116,16 +115,15 @@ function onSelect() {
   scene.add(sphere);
   pointMeshes.push(sphere);
 
-  // Store point
   measurementPoints.push(pos.clone());
 
-  // Update line and info
   updatePolyline();
   updateInfo();
+
+  console.log(`Placed point ${measurementPoints.length} at:`, pos);  // Debug
 }
 
 function updatePolyline() {
-  // Remove old line
   if (polyline) {
     scene.remove(polyline);
     polyline.geometry.dispose();
@@ -137,16 +135,15 @@ function updatePolyline() {
   const geometry = new THREE.BufferGeometry().setFromPoints(measurementPoints);
   const material = new THREE.LineBasicMaterial({
     color: 0xffff00,
-    linewidth: 4  // Note: linewidth > 1 doesn't work on all devices (WebXR limitation)
+    linewidth: 4
   });
-
   polyline = new THREE.Line(geometry, material);
   scene.add(polyline);
 }
 
 function updateInfo() {
   if (measurementPoints.length === 0) {
-    document.getElementById('info').textContent = 'Tap to place points';
+    document.getElementById('info').textContent = 'Point at surface & tap to place dots';
     return;
   }
 
@@ -155,62 +152,67 @@ function updateInfo() {
     total += measurementPoints[i - 1].distanceTo(measurementPoints[i]);
   }
 
-  const segment = measurementPoints.length >= 2
-    ? ` | Last: ${(measurementPoints[measurementPoints.length - 2].distanceTo(measurementPoints[measurementPoints.length - 1])).toFixed(3)} m`
+  const lastSegment = measurementPoints.length >= 2
+    ? ` | Last: ${measurementPoints[measurementPoints.length - 2].distanceTo(measurementPoints[measurementPoints.length - 1]).toFixed(3)} m`
     : '';
 
   document.getElementById('info').innerHTML = `
-    <strong>Points: ${measurementPoints.length}</strong><br>
-    Total Distance: <strong>${total.toFixed(3)} m</strong>${segment}<br>
-    <small>Double-tap to reset</small>
+    <strong>Dots: ${measurementPoints.length}</strong><br>
+    Total Distance: <strong>${total.toFixed(3)} m</strong>${lastSegment}<br>
+    <small>Scan for walls/books | Double-tap reset</small>
   `;
 }
 
 function resetMeasurement() {
-  // Remove all spheres
   pointMeshes.forEach(mesh => scene.remove(mesh));
   pointMeshes = [];
-
-  // Remove line
   if (polyline) {
     scene.remove(polyline);
     polyline.geometry.dispose();
     polyline.material.dispose();
     polyline = null;
   }
-
   measurementPoints = [];
   updateInfo();
 }
 
-// Handle hit testing
+// Enhanced Hit-Testing: ANY Surface + Debug
 function handleHitTest(frame) {
   if (!hitTestSource) return;
 
   const hitTestResults = frame.getHitTestResults(hitTestSource);
-  console.log("Hit results:", hitTestResults.length); // Debug: Check console
+  console.log(`Hits: ${hitTestResults.length}`);  // Debug: 0 = scan more
 
   if (hitTestResults.length > 0) {
-    const hit = hitTestResults[0];
+    const hit = hitTestResults[0];  // Closest surface
     const pose = hit.getPose(referenceSpace);
+
     if (pose) {
       reticle.visible = true;
       reticle.matrix.fromArray(pose.transform.matrix);
-      // Force reticle glow for visibility
-      reticle.material.emissive = new THREE.Color(0x00ff00);
+
+      // Surface type debug (from normal vector)
+      const normal = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(pose.transform.matrix)).normalize();
+      const upAngle = Math.acos(normal.dot(new THREE.Vector3(0, 1, 0)));  // Angle from "up"
+      let surfaceType = upAngle < Math.PI / 4 ? 'Floor/Table' : upAngle > 3 * Math.PI / 4 ? 'Ceiling' : 'Wall/Object';
+      console.log(`Hit ${surfaceType}! Angle: ${(upAngle * 180 / Math.PI).toFixed(0)}°`);  // Debug
+
+      // Glow on hit
+      reticle.material.emissive.setHex(0x00ff00);
     }
   } else {
-    reticle.visible = false;
-    console.log("No surface detected — point at flat wall/floor"); // Debug
+    reticle.visible = true;  // Keep cursor visible, but dim
+    reticle.material.emissive.setHex(0x000000);
+    console.log('No hit — scan surface (move phone slowly)');
   }
 }
 
-// XR Session Start
+// Session Start with Scan Prompt
 renderer.xr.addEventListener('sessionstart', async (event) => {
   const session = renderer.xr.getSession();
   referenceSpace = await session.requestReferenceSpace('viewer');
   hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
-  document.getElementById('info').textContent = 'AR Session started! Point at floor/wall.';
+  document.getElementById('info').innerHTML += '<br><em>Scanning... Move phone to detect walls/books!</em>';
 });
 
 function onWindowResize() {
