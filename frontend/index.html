@@ -6,8 +6,9 @@
   <title>Camera Measurement</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
+
 <body>
-  <div id="info">Connecting to backend...</div>
+  <div id="info">Click "Start Camera"</div>
 
   <button id="startBtn" style="
     position:absolute;
@@ -31,50 +32,31 @@
 
   <canvas id="overlay" style="
     position:absolute;
-    top:0; left:0;
+    top:0;
+    left:0;
     width:100vw;
     height:100vh;
-    pointer-events:none;
-  "></canvas>
+    pointer-events:auto;
+"></canvas>
 
-  <!-- SOCKET.IO -->
+
+  <!-- SOCKET.IO (ONLY FOR BACKEND CONNECTION) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-
   <script>
-      const backendURL = "https://collateral-webxr.onrender.com";
-
-      // Connect to backend
-      const socket = io(backendURL, {
+      const socket = io("https://collateral-webxr.onrender.com", {
           transports: ["websocket"],
           reconnection: true
       });
 
       socket.on("connect", () => {
-          document.getElementById("info").innerText = "Connected to backend! ✅";
-          console.log("Connected:", socket.id);
-
-          // AUTO JOIN ROOM (IMPORTANT)
-          socket.emit("join", "room1");
-      });
-
-      socket.on("ready", () => {
-          console.log("Other user joined — WebRTC ready");
-      });
-
-      socket.on("offer", (desc) => {
-          console.log("Received offer", desc);
-      });
-
-      socket.on("answer", (desc) => {
-          console.log("Received answer", desc);
-      });
-
-      socket.on("candidate", (candidate) => {
-          console.log("Received ICE candidate", candidate);
+          document.getElementById("info").innerText = "Connected to backend! (Camera independent)";
       });
   </script>
 
+  <!-- Measurement System -->
   <script src="js/opencvMeasure.js"></script>
+
 </body>
 </html>
+
 
