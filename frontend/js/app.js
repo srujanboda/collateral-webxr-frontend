@@ -159,17 +159,20 @@ function handleHitTest(frame) {
   if (!hitTestSource) return;
 
   const hitTestResults = frame.getHitTestResults(hitTestSource);
+  console.log("Hit results:", hitTestResults.length); // Debug: Check console
 
   if (hitTestResults.length > 0) {
     const hit = hitTestResults[0];
     const pose = hit.getPose(referenceSpace);
-
     if (pose) {
       reticle.visible = true;
       reticle.matrix.fromArray(pose.transform.matrix);
+      // Force reticle glow for visibility
+      reticle.material.emissive = new THREE.Color(0x00ff00);
     }
   } else {
     reticle.visible = false;
+    console.log("No surface detected — point at flat wall/floor"); // Debug
   }
 }
 
