@@ -2,71 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Camera Measurement</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>AR Measure</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; font-family:sans-serif; }
+    #info {
+      position:absolute; top:10px; left:10px; color:white; background:rgba(0,0,0,0.7);
+      padding:10px; border-radius:8px; z-index:100; pointer-events:none; max-width:90%;
+    }
+    button {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      padding:16px 32px; font-size:18px; background:#007bff; color:white;
+      border:none; border-radius:12px; z-index:99;
+    }
+    video, canvas { position:absolute; top:0; left:0; width:100vw; height:100vh; object-fit:cover; }
+    canvas { pointer-events:none; }
+    #resetBtn { bottom:20px; top:auto; background:#dc3545; display:none; }
+  </style>
 </head>
-
 <body>
-  <div id="info">Click "Start Camera"</div>
 
-  <button id="startBtn" style="
-    position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    padding:12px 20px;
-    font-size:16px;
-    border:none;
-    border-radius:8px;
-    background-color:#007bff;
-    color:white;
-  ">Start Camera</button>
+  <div id="info">Loading...</div>
+  <button id="startBtn">Start Camera</button>
+  <button id="resetBtn">Reset</button>
 
-  <video id="videoFeed" autoplay playsinline muted style="
-    display:none;
-    width:100vw;
-    height:100vh;
-    object-fit:cover;
-  "></video>
+  <video id="videoFeed" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
 
-  <canvas id="overlay" style="
-    position:absolute;
-    top:0;
-    left:0;
-    width:100vw;
-    height:100vh;
-    pointer-events:none; /* Start disabled */
-  "></canvas>
+  <!-- Only load main.js — it handles AR detection + fallback -->
+  <script type="module" src="js/main.js"></script>
 
-  <button id="resetBtn" style="
-    position:absolute;
-    bottom:20px;
-    left:50%;
-    transform:translateX(-50%);
-    padding:10px 16px;
-    font-size:14px;
-    border:none;
-    border-radius:8px;
-    background-color:#dc3545;
-    color:white;
-    display:none;
-  ">Reset Measurement</button>
-
-  <!-- SOCKET.IO (ONLY FOR BACKEND CONNECTION) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-  <script>
-      const socket = io("https://collateral-webxr.onrender.com", {
-          transports: ["websocket"],
-          reconnection: true
-      });
-
-      socket.on("connect", () => {
-          document.getElementById("info").innerText = "Connected to backend! (Camera independent)";
-      });
-  </script>
-
-  <!-- Load main.js for AR detection and dynamic script loading -->
-  <script src="js/main.js"></script>
 </body>
 </html>
