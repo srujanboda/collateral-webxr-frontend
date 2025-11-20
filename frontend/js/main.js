@@ -1,51 +1,29 @@
-// main.js
-// Detect WebXR AR support and dynamically load the appropriate module
+// js/main.js
+console.log("main.js loaded");
 
 async function supportsWebXR() {
   if (!navigator.xr) return false;
-
-  // Timeout wrapper to avoid hanging on certain mobile browsers
-  return Promise.race([
-    navigator.xr.isSessionSupported("immersive-ar"),
-    new Promise(resolve => setTimeout(() => resolve(false), 2000))
-  ]).catch(err => {
-    console.warn("WebXR check failed:", err);
-    return false;
-  });
+  return await navigator.xr.isSessionSupported("immersive-ar").catch(() => false);
 }
 
 (async () => {
-  const infoBox = document.getElementById("info");
-  infoBox.textContent = "Checking device capabilities...";
+  const info = document.getElementById("info");
 
+  // Update UI immediately
+  document.getElementById("startBtn").textContent = "Checking Device...";
+  
   const xrSupported = await supportsWebXR();
 
   if (xrSupported) {
-    infoBox.textContent = "Starting AR Measurement Mode...";
-    console.log("✅ WebXR supported: loading AR module...");
-
-    import("./js/app.js")
-      .then(() => console.log("Loaded WebXR AR mode successfully."))
-      .catch(err => {
-        console.error("❌ Error loading AR module:", err);
-        infoBox.textContent = "Failed to load AR mode.";
-      });
-
+    info.textContent = "AR Mode Ready! Tap Start";
+    console.log("WebXR supported → will load AR");
+    document.getElementById("startBtn").onclick = () => import("./app.js");
   } else {
-    infoBox.textContent = "WebXR not supported. Starting camera mode...";
-    console.log("⚠️ WebXR not supported: using camera fallback.");
-
-    const video = document.getElementById("videoFeed");
-
-    // Delay slightly to ensure DOM updates first
-    setTimeout(() => {
-      video.style.display = "block";
-      import("./js/opencvMeasure.js")
-        .then(() => console.log("Loaded OpenCV fallback mode."))
-        .catch(err => {
-          console.error("❌ Error loading OpenCV mode:", err);
-          infoBox.textContent = "Failed to load fallback mode.";
-        });
-    }, 300);
+    info.textContent = "Using 2D Camera Mode";
+    console.log("No WebXR → using camera fallback");
+    document.getElementById("startBtn").onclick = () => import("./opencvMeasure.js");
   }
+
+  // Now re-enable the button
+  document.getElementById("startBtn").textContent = "Start Camera";
 })();
