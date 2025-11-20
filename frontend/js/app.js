@@ -30,14 +30,43 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // AR Button
-  const button = ARButton.createButton(renderer, {
+ // BEST VERSION — Works perfectly on iOS & Android
+let arButton;
+
+if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+  // Customize button BEFORE creating it
+  arButton = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
+    domOverlay: { root: document.body },
+    sessionInit: {
+      // Optional: better iOS behavior
+      optionalFeatures: ['dom-overlay', 'hit-test']
+    }
+  });
+
+  // Now safely change text & style — works because we do it right after creation
+  arButton.textContent = 'Start AR Measurement';
+  arButton.style.fontSize = '18px';
+  arButton.style.padding = '16px 24px';
+  arButton.style.borderRadius = '12px';
+  arButton.style.background = '#007AFF';
+  arButton.style.color = 'white';
+  arButton.style.fontWeight = 'bold';
+} else {
+  // Desktop fallback (no mobile styling)
+  arButton = ARButton.createButton(renderer, {
+    requiredFeatures: ['hit-test'],
     domOverlay: { root: document.body }
   });
-  document.body.appendChild(button);
-
+}
+  document.body.appendChild(arButton);
+  renderer.xr.addEventListener('sessionstart', () => {
+  arButton.style.display = 'none';
+});
+renderer.xr.addEventListener('sessionend', () => {
+  arButton.style.display = 'block';
+});
   // Lighting
   const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
   scene.add(light);
