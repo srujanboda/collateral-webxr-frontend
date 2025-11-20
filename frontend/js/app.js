@@ -1,15 +1,15 @@
-// app.js
+// app.js - Full Updated Version with Multi-Point Polyline + Reset
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
 let camera, scene, renderer;
 let reticle, controller;
 let hitTestSource = null;
-let localSpace = null;
+let referenceSpace = null;
 
 let measurementPoints = [];
 let pointMeshes = [];
-let line = null;
+let polyline = null;  // Single Line object for all points
 
 init();
 animate();
@@ -25,42 +25,51 @@ function init() {
   );
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Add AR button
+  // AR Button
   const button = ARButton.createButton(renderer, {
-    requiredFeatures: ['hit-test']
+    requiredFeatures: ['hit-test'],
+    optionalFeatures: ['dom-overlay'],
+    domOverlay: { root: document.body }
   });
   document.body.appendChild(button);
 
   // Lighting
-  const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+  const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
   scene.add(light);
 
-  // Reticle
+  // Reticle (where you'll place points)
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.8, transparent: true })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  // Controller (taps)
+  // Controller for tap/select
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
 
-  window.addEventListener('resize', onWindowResize);
-  document.getElementById('info').textContent = 'Tap once to place first point.';
-}
+  // Reset on double tap (or add a button later)
+  let lastTap = 0;
+  controller.addEventListener('select', () => {
+    const currentTime = Date.now();
+    if (currentTime - lastTap < 400) {
+      resetMeasurement();
+    }
+    lastTap = currentTime;
+  });
 
-async function onSessionStart(session) {
-  const viewerSpace = await session.requestReferenceSpace('viewer');
-  hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-  localSpace = await session.requestReferenceSpace('local');
+  window.addEventListener('resize', onWindowResize);
+
+  // Initial message
+  document.getElementById('info').textContent = 'Point device at surface → Tap to place points';
 }
 
 function onSelect() {
@@ -69,50 +78,108 @@ function onSelect() {
   const pos = new THREE.Vector3();
   pos.setFromMatrixPosition(reticle.matrix);
 
-  // Place a small sphere
+  // Add green sphere
   const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 16, 16),
+    new THREE.SphereGeometry(0.015, 16, 16),
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
   );
   sphere.position.copy(pos);
   scene.add(sphere);
-
-  measurementPoints.push(pos.clone());
   pointMeshes.push(sphere);
 
-  if (measurementPoints.length === 2) {
-    drawMeasurement();
-  } else if (measurementPoints.length > 2) {
-    resetMeasurement();
-  } else {
-    document.getElementById('info').textContent = 'Tap again to place second point.';
-  }
+  // Store point
+  measurementPoints.push(pos.clone());
+
+  // Update line and info
+  updatePolyline();
+  updateInfo();
 }
 
-function drawMeasurement() {
-  const [p1, p2] = measurementPoints;
+function updatePolyline() {
+  // Remove old line
+  if (polyline) {
+    scene.remove(polyline);
+    polyline.geometry.dispose();
+    polyline.material.dispose();
+  }
 
-  // Line between points
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
-  line = new THREE.Line(lineGeometry, lineMaterial);
-  scene.add(line);
+  if (measurementPoints.length < 2) return;
 
-  const distance = p1.distanceTo(p2);
-  document.getElementById('info').textContent = `Distance: ${distance.toFixed(2)} m. Tap to reset.`;
+  const geometry = new THREE.BufferGeometry().setFromPoints(measurementPoints);
+  const material = new THREE.LineBasicMaterial({
+    color: 0xffff00,
+    linewidth: 4  // Note: linewidth > 1 doesn't work on all devices (WebXR limitation)
+  });
+
+  polyline = new THREE.Line(geometry, material);
+  scene.add(polyline);
+}
+
+function updateInfo() {
+  if (measurementPoints.length === 0) {
+    document.getElementById('info').textContent = 'Tap to place points';
+    return;
+  }
+
+  let total = 0;
+  for (let i = 1; i < measurementPoints.length; i++) {
+    total += measurementPoints[i - 1].distanceTo(measurementPoints[i]);
+  }
+
+  const segment = measurementPoints.length >= 2
+    ? ` | Last: ${(measurementPoints[measurementPoints.length - 2].distanceTo(measurementPoints[measurementPoints.length - 1])).toFixed(3)} m`
+    : '';
+
+  document.getElementById('info').innerHTML = `
+    <strong>Points: ${measurementPoints.length}</strong><br>
+    Total Distance: <strong>${total.toFixed(3)} m</strong>${segment}<br>
+    <small>Double-tap to reset</small>
+  `;
 }
 
 function resetMeasurement() {
-  // Remove old points and line
-  pointMeshes.forEach(m => scene.remove(m));
+  // Remove all spheres
+  pointMeshes.forEach(mesh => scene.remove(mesh));
   pointMeshes = [];
-  measurementPoints = [];
-  if (line) {
-    scene.remove(line);
-    line = null;
+
+  // Remove line
+  if (polyline) {
+    scene.remove(polyline);
+    polyline.geometry.dispose();
+    polyline.material.dispose();
+    polyline = null;
   }
-  document.getElementById('info').textContent = 'Tap once to place first point.';
+
+  measurementPoints = [];
+  updateInfo();
 }
+
+// Handle hit testing
+function handleHitTest(frame) {
+  if (!hitTestSource) return;
+
+  const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+  if (hitTestResults.length > 0) {
+    const hit = hitTestResults[0];
+    const pose = hit.getPose(referenceSpace);
+
+    if (pose) {
+      reticle.visible = true;
+      reticle.matrix.fromArray(pose.transform.matrix);
+    }
+  } else {
+    reticle.visible = false;
+  }
+}
+
+// XR Session Start
+renderer.xr.addEventListener('sessionstart', async (event) => {
+  const session = renderer.xr.getSession();
+  referenceSpace = await session.requestReferenceSpace('viewer');
+  hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
+  document.getElementById('info').textContent = 'AR Session started! Point at floor/wall.';
+});
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -121,29 +188,10 @@ function onWindowResize() {
 }
 
 function animate() {
-  renderer.setAnimationLoop(render);
-}
-
-function render(timestamp, frame) {
-  const session = renderer.xr.getSession();
-  if (!session) return;
-
-  if (!hitTestSource) {
-    onSessionStart(session);
-    return;
-  }
-
-  const referenceSpace = renderer.xr.getReferenceSpace();
-  const hitTestResults = frame.getHitTestResults(hitTestSource);
-
-  if (hitTestResults.length > 0) {
-    const hit = hitTestResults[0];
-    const pose = hit.getPose(referenceSpace);
-    reticle.visible = true;
-    reticle.matrix.fromArray(pose.transform.matrix);
-  } else {
-    reticle.visible = false;
-  }
-
-  renderer.render(scene, camera);
+  renderer.setAnimationLoop((timestamp, frame) => {
+    if (frame) {
+      handleHitTest(frame);
+    }
+    renderer.render(scene, camera);
+  });
 }
