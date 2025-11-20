@@ -9,10 +9,15 @@ let points = [];
 startBtn.addEventListener('click', async () => {
   startBtn.style.display = 'none';
   info.textContent = 'Tap on two points to measure distance';
+
   await startCamera();
+
   video.style.display = 'block';
   resizeCanvas();
+
   window.addEventListener('resize', resizeCanvas);
+
+  // Enable clicking
   canvas.style.pointerEvents = 'auto';
   canvas.addEventListener('click', onCanvasClick);
 });
@@ -22,8 +27,7 @@ async function startCamera() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
     video.srcObject = stream;
   } catch (e) {
-    info.textContent = 'Camera access denied';
-    console.error(e);
+    info.textContent = 'Camera access denied ❌';
   }
 }
 
@@ -39,47 +43,54 @@ function onCanvasClick(event) {
 
   points.push({ x, y });
 
-  if (points.length > 2) points.shift(); // keep only 2 points
+  draw();
 
-  drawOverlay();
-
+  // When 2 points selected
   if (points.length === 2) {
     const dist = calcDistance(points[0], points[1]);
-    info.textContent = `Approx distance: ${dist.toFixed(2)} m (tap to reset)`;
+
+    info.textContent = `Distance: ${dist.toFixed(2)} m (tap again to reset)`;
+
+    // reset for next measurement
+    points = [];
   }
 }
 
-// === Drawing function (from my corrected version) ===
-function drawOverlay() {
+function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // draw green points
+  ctx.fillStyle = 'lime';
+  ctx.strokeStyle = 'yellow';
+  ctx.lineWidth = 3;
+
+  // Draw dots
   points.forEach(p => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-    ctx.fillStyle = "lime";
     ctx.fill();
   });
 
-  // draw yellow line
+  // Draw line if 2 points exist
   if (points.length === 2) {
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     ctx.lineTo(points[1].x, points[1].y);
-    ctx.strokeStyle = "yellow";
-    ctx.lineWidth = 3;
     ctx.stroke();
   }
 }
 
-// === Distance calculation (your logic kept same) ===
 function calcDistance(p1, p2) {
+  // Pixel distance
   const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
-  const approxFOV = 60;  
+  // Convert to meters using FOV
+  const approxFOV = 60; // degrees
   const width = video.videoWidth;
-  const distanceToPlane = 0.5;
-  const pixelToMeter = (2 * distanceToPlane * Math.tan((approxFOV / 2) * Math.PI / 180)) / width;
+
+  const distanceToPlane = 0.5; 
+  const pixelToMeter =
+      (2 * distanceToPlane * Math.tan((approxFOV / 2) * Math.PI / 180)) 
+      / width;
 
   return pixelDist * pixelToMeter;
 }
