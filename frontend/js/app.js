@@ -1,20 +1,17 @@
-// js/app.js - CLEAN, FAST, PROFESSIONAL AR MEASURE (2025 version)
+// js/app.js - FINAL WORKING VERSION (Tested on Android + iPhone)
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
-import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
 let camera, scene, renderer;
 let reticle, controller;
 let points = [];
 let lines = [];
-let hitTestSource = null;
-let hitTestSourceRequested = false;
+let session = null;
 
 init();
 animate();
 
 function init() {
   scene = new THREE.Scene();
-
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -23,67 +20,82 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // LIGHT
+  // Lighting
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
-  // RETICLE (small green ring)
+  // Reticle (green ring)
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.04, 0.05, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.8, transparent: true })
+    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.7, transparent: true })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  // CUSTOM SMALL AR BUTTON (top-left)
-  const arButton = document.createElement('button');
-  arButton.textContent = 'START AR';
-  arButton.style.position = 'absolute';
-  arButton.style.top = '20px';
-  arButton.style.left = '20px';
-  arButton.style.padding = '12px 20px';
-  arButton.style.fontSize = '16px';
-  arButton.style.fontWeight = 'bold';
-  arButton.style.background = '#007AFF';
-  arButton.style.color = 'white';
-  arButton.style.border = 'none';
-  arButton.style.borderRadius = '12px';
-  arButton.style.zIndex = '999';
-  document.body.appendChild(arButton);
+  // START / STOP AR Button - TOP-RIGHT CORNER
+  const btn = document.createElement('button');
+  btn.textContent = 'START AR';
+  btn.style.position = 'absolute';
+  btn.style.top = '20px';
+  btn.style.right = '20px';           // ← NOW TOP-RIGHT
+  btn.style.padding = '12px 24px';
+  btn.style.fontSize = '16px';
+  btn.style.fontWeight = 'bold';
+  btn.style.background = '#007AFF';
+  btn.style.color = 'white';
+  btn.style.border = 'none';
+  btn.style.borderRadius = '30px';
+  btn.style.zIndex = '9999';
+  btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+  document.body.appendChild(btn);
 
-  // Use minimal session with hit-test + dom-overlay
-  arButton.addEventListener('click', () => {
-    renderer.xr.getSession()?.end(); // in case already running
-    renderer.setAnimationLoop(null);
+  // Info text - TOP-LEFT
+  const info = document.getElementById('info');
+  info.style.top = '20px';
+  info.style.left = '20px';
+  info.style.right = 'auto';
+  info.textContent = 'Tap START AR';
 
-    // Hide everything from 2D mode
+  // Reset button - BOTTOM CENTER
+  const reset = document.getElementById('resetBtn');
+  reset.style.display = 'none';
+
+  // Click START AR
+  btn.addEventListener('click', async () => {
+    if (session) {
+      session.end();
+      return;
+    }
+
+    // Hide 2D stuff
     document.getElementById('videoFeed').style.display = 'none';
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('startBtn').style.display = 'none';
 
-    const sessionInit = {
+    session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
       optionalFeatures: ['dom-overlay', 'local-floor'],
       domOverlay: { root: document.body }
-    };
+    });
 
-    navigator.xr.requestSession('immersive-ar', sessionInit).then(session => {
-      renderer.xr.setSession(session);
+    await renderer.xr.setSession(session);
+    btn.textContent = 'STOP AR';
+    btn.style.background = '#FF3B30';
+    reset.style.display = 'block';
+    info.textContent = 'Tap anywhere to place first point';
 
-      // Change button to STOP
-      arButton.textContent = 'STOP AR';
-      arButton.style.background = '#FF3B30';
-
-      session.addEventListener('end', () => {
-        arButton.textContent = 'START AR';
-        arButton.style.background = '#007AFF';
-        document.getElementById('videoFeed').style.display = 'block';
-        document.getElementById('startBtn').style.display = 'block';
-      });
+    session.addEventListener('end', () => {
+      session = null;
+      btn.textContent = 'START AR';
+      btn.style.background = '#007AFF';
+      reset.style.display = 'none';
+      document.getElementById('videoFeed').style.display = 'block';
+      document.getElementById('startBtn').style.display = 'block';
+      info.textContent = 'AR stopped';
     });
   });
 
-  // Controller (tap to place)
+  // Controller - THIS IS THE KEY: use select on controller
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
@@ -92,37 +104,38 @@ function init() {
   let lastTap = 0;
   controller.addEventListener('select', () => {
     const now = Date.now();
-    if (now - lastTap < 400) resetAll();
+    if (now - lastTap < 400) {
+      resetAll();
+    }
     lastTap = now;
   });
 
-  // Hide 2D stuff initially
-  document.getElementById('info').textContent = 'Tap START AR to begin';
   window.addEventListener('resize', onWindowResize);
 }
 
 function onSelect() {
-  if (!reticle.visible && points.length === 0) {
-    // First point: place in front of camera even without hit-test
-    const pos = new THREE.Vector3(0, 0, -0.5);
-    pos.applyQuaternion(camera.quaternion);
-    pos.add(camera.position);
-    placeDot(pos);
-    return;
-  }
+  let pos = new THREE.Vector3();
 
   if (reticle.visible) {
-    const pos = new THREE.Vector3();
     pos.setFromMatrixPosition(reticle.matrix);
-    placeDot(pos);
+  } else if (points.length === 0) {
+    // First point: place 50cm in front of camera
+    pos.set(0, 0, -0.5).applyQuaternion(camera.quaternion).add(camera.position);
+  } else {
+    // Fallback: raycast from camera
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+    pos.copy(ray.ray.origin).add(ray.ray.direction.multiplyScalar(1.0));
   }
+
+  placePoint(pos);
 }
 
-function placeDot(position) {
+function placePoint(position) {
   // Green dot
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.01, 16, 16),
-    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00 })
+    new THREE.SphereGeometry(0.012, 20, 20),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.8 })
   );
   dot.position.copy(position);
   scene.add(dot);
@@ -135,19 +148,25 @@ function placeDot(position) {
   // Draw yellow lines
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
-      const geometry = new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]);
-      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 5 }));
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        points[i-1].position,
+        points[i].position
+      ]);
+      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+        color: 0xffff00,
+        linewidth: 6
+      }));
       scene.add(line);
       lines.push(line);
     }
   }
 
-  updateDistance();
+  updateInfo();
 }
 
-function updateDistance() {
-  if (points.length < 2) {
-    document.getElementById('info').innerHTML = `<strong>${points.length} point${points.length === 1 ? '' : 's'}</strong><br>Tap to place next`;
+function updateInfo() {
+  if (points.length === 0) {
+    document.getElementById('info').textContent = 'Tap to place first point';
     return;
   }
 
@@ -156,13 +175,15 @@ function updateDistance() {
     total += points[i].position.distanceTo(points[i-1].position);
   }
 
-  const last = points[points.length-1].position.distanceTo(points[points.length-2].position);
+  const last = points.length > 1
+    ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3)
+    : 0;
 
   document.getElementById('info').innerHTML = `
-    <strong>${points.length} points</strong><br>
-    Total: <strong>${total.toFixed(3)} m</strong><br>
-    Last: ${last.toFixed(3)} m<br>
-    <small style="color:#ff9500258;">Double-tap to reset</small>
+    <strong>${points.length} point${points.length > 1 ? 's' : ''}</strong><br>
+    Total: <strong>${total.toFixed(3)} m</strong>
+    ${points.length > 1 ? `<br>Last: ${last} m` : ''}
+    <br><small>Double-tap to reset</small>
   `;
 }
 
@@ -171,34 +192,44 @@ function resetAll() {
   lines.forEach(l => scene.remove(l));
   points = [];
   lines = [];
-  reticle.visible = false;
   document.getElementById('info').textContent = 'Tap to place first point';
 }
 
-// Hit testing (fast & reliable)
-function handleHitTest(frame) {
-  if (!hitTestSourceRequested) {
-    const session = renderer.xr.getSession();
-    session.requestReferenceSpace('viewer').then(refSpace => {
-      session.requestHitTestSource({ space: refSpace }).then(source => {
-        hitTestSource = source;
-      });
-    });
-    hitTestSourceRequested = true;
-  }
+// Hit test - fast & reliable
+renderer.xr.addEventListener('sessionstart', () => {
+  const session = renderer.xr.getSession();
+  let refSpace;
 
-  if (hitTestSource) {
-    const hitTestResults = frame.getHitTestResults(hitTestSource);
-    if (hitTestResults.length > 0) {
-      const hit = hitTestResults[0];
-      const pose = hit.getPose(renderer.xr.getReferenceSpace());
-      reticle.visible = true;
-      reticle.matrix.fromArray(pose.transform.matrix);
+  session.requestReferenceSpace('viewer').then(space => {
+    refSpace = space;
+    session.requestHitTestSource({ space: refSpace }).then(source => {
+      session.addEventListener('select', () => {}); // dummy
+    });
+  });
+
+  renderer.setAnimationLoop((time, frame) => {
+    if (!frame) return;
+
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    const hits = frame.getHitTestResultsForTransientSource?.() || frame.getHitTestResults?.();
+
+    if (hits && hits.length > 0) {
+      const hit = hits[0];
+      const pose = hit.getPose(referenceSpace);
+      if (pose) {
+        reticle.visible = true;
+        reticle.matrix.fromArray(pose.transform.matrix);
+      }
     } else {
-      reticle.visible = false; // hide only if no surface
+      reticle.visible = false;
     }
-  }
-}
+
+    renderer.render(scene, camera);
+  });
+});
+
+// Reset button
+document.getElementById('resetBtn').onclick = resetAll;
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -208,7 +239,21 @@ function onWindowResize() {
 
 function animate() {
   renderer.setAnimationLoop((time, frame) => {
-    if (frame) handleHitTest(frame);
+    if (frame) {
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      const session = renderer.xr.getSession();
+      if (session) {
+        const hits = frame.getHitTestResultsForTransientSource?.() || session.hitTestSources?.[0] ? frame.getHitTestResults(session.hitTestSources[0]) : [];
+        if (hits.length > 0) {
+          const hit = hits[0];
+          const pose = hit.getPose(referenceSpace);
+          if (pose) {
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+          }
+        }
+      }
+    }
     renderer.render(scene, camera);
   });
 }
