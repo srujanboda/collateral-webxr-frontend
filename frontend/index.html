@@ -21,16 +21,14 @@
   </style>
 </head>
 <body>
-
   <div id="info">Loading...</div>
-  <button id="startBtn">Start Camera</button>
+  <button id="startBtn">Detecting AR support...</button>
   <button id="resetBtn">Reset</button>
 
   <video id="videoFeed" autoplay playsinline muted></video>
   <canvas id="overlay"></canvas>
+  <video id="remoteVideo" playsinline></video>
 
-  <!-- Only load main.js — it handles AR detection + fallback -->
   <script type="module" src="js/main.js"></script>
-
 </body>
 </html>
