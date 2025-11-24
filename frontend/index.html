@@ -1,35 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>AR Measure</title>
-  <style>
-    body { margin:0; overflow:hidden; background:#000; font-family:sans-serif; }
-    #info {
-      position:absolute; top:10px; left:10px; color:white; background:rgba(0,0,0,0.7);
-      padding:10px; border-radius:8px; z-index:100; pointer-events:none; max-width:90%;
-    }
-    button {
-      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-      padding:16px 32px; font-size:18px; background:#007bff; color:white;
-      border:none; border-radius:12px; z-index:99;
-    }
-    video, canvas { position:absolute; top:0; left:0; width:100vw; height:100vh; object-fit:cover; }
-    canvas { pointer-events:none; }
-    #resetBtn { bottom:20px; top:auto; background:#dc3545; display:none; }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="info">Tap START AR to begin</div>
+  <div id="info">Tap START AR</div>
   <button id="arButton">START AR</button>
-  <button id="startBtn">Detecting AR support...</button>
-  <button id="resetBtn">Reset</button>
-
-  <video id="videoFeed" autoplay playsinline muted></video>
-  <canvas id="overlay"></canvas>
-  <video id="remoteVideo" playsinline></video>
-
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
