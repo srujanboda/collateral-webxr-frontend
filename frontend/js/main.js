@@ -1,6 +1,4 @@
-// js/main.js  ← FINAL WORKING VERSION
 console.log("main.js: Starting...");
-
 async function supportsWebXR() {
   if (!navigator.xr) return false;
   try {
@@ -9,35 +7,31 @@ async function supportsWebXR() {
     return false;
   }
 }
-
 (async () => {
   const info = document.getElementById("info");
   const startBtn = document.getElementById("startBtn");
   const resetBtn = document.getElementById("resetBtn");
-
   info.textContent = "Detecting device...";
   startBtn.disabled = true;
-
   const xrSupported = await supportsWebXR();
-
   if (xrSupported) {
     info.textContent = "AR Mode Ready! Tap to start";
     startBtn.textContent = "Start AR Measurement";
-    startBtn.onclick = () => import("./app.js");  // AR mode
+    startBtn.onclick = async () => {
+      startBtn.style.display = 'none'; // Hide immediately
+      await import("./app.js");
+      // Optionally show resetBtn if needed in AR
+      resetBtn.style.display = 'block';
+    };
   } else {
     info.textContent = "2D Camera Mode";
     startBtn.textContent = "Start Camera";
-    // Load AND run the 2D fallback immediately when button is clicked
     startBtn.onclick = async () => {
-  try {
-    await import("./app.js");
-  } catch (e) {
-    console.error("AR failed:", e);
-    info.textContent = "AR not supported — switching to 2D Camera";
-    await import("./opencvMeasure.js");
+      startBtn.style.display = 'none'; // Hide immediately
+      info.textContent = "Switching to 2D Camera";
+      await import("./opencvMeasure.js");
+      resetBtn.style.display = 'block';
+    };
   }
-};
-  }
-
   startBtn.disabled = false;
 })();
