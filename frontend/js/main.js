@@ -17,6 +17,8 @@ async function supportsWebXR() {
   if (xrSupported) {
     info.textContent = "AR Mode Ready! Tap to start";
     startBtn.textContent = "Start AR Measurement";
+    document.getElementById('startBtn').style.display = 'none';  // ← HIDE default button
+    await import("./app.js");
     startBtn.onclick = async () => {
       startBtn.style.display = 'none'; // Hide immediately
       await import("./app.js");
