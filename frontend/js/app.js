@@ -3,12 +3,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.mod
 let camera, scene, renderer, controller;
 let points = [], lines = [];
 let hitTestSource = null, session = null, referenceSpace = null;
+let isARActive = false;
 
 const info = document.getElementById('info');
 const button = document.getElementById('arButton');
 
 init();
-animate();
 
 function init() {
   scene = new THREE.Scene();
@@ -20,25 +20,24 @@ function init() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
-  renderer.setClearColor(0x000000, 0); // Transparent
+  renderer.setClearColor(0x000000, 0);
   document.body.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 5)); // Brighter light for visibility
 
   controller = renderer.xr.getController(0);
-  controller.addEventListener('select', onSelect); // Keep for fallback
   scene.add(controller);
 
-  // Double-tap to reset
+  // Double-tap reset
   let lastTap = 0;
   controller.addEventListener('select', () => {
     if (Date.now() - lastTap < 400) resetAll();
     lastTap = Date.now();
   });
 
-  // NEW: Direct screen tap listener for mobile reliability
-  renderer.domElement.addEventListener('click', onScreenTap, { passive: false });
-  renderer.domElement.addEventListener('touchstart', onScreenTap, { passive: false });
+  // CRITICAL FIX: Direct tap listeners on canvas for mobile
+  renderer.domElement.addEventListener('click', onTap, { passive: false });
+  renderer.domElement.addEventListener('touchstart', onTap, { passive: false });
 
   button.addEventListener('click', startAR);
 
@@ -57,13 +56,7 @@ async function startAR() {
     return;
   }
 
-  if (!navigator.xr) {
-    info.textContent = 'WebXR not supported on this device';
-    return;
-  }
-
   try {
-    console.log('Starting AR session...');
     session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
       optionalFeatures: ['dom-overlay', 'local-floor'],
@@ -72,13 +65,17 @@ async function startAR() {
 
     document.body.classList.add('ar-active');
     button.textContent = 'STOP AR';
-    info.textContent = 'Camera ready! Tap anywhere to place a point';
+    info.textContent = 'Camera ready! Tap to place point';
 
     await renderer.xr.setSession(session);
+    isARActive = true;
+
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    console.log('AR ready - taps enabled');
+    // Enable taps on canvas
+    renderer.domElement.style.pointerEvents = 'auto';
+
     session.addEventListener('end', onSessionEnd);
 
   } catch (error) {
@@ -91,31 +88,30 @@ function onSessionEnd() {
   session = null;
   hitTestSource = null;
   referenceSpace = null;
+  isARActive = false;
+  renderer.domElement.style.pointerEvents = 'none';
   document.body.classList.remove('ar-active');
   button.textContent = 'START AR';
   info.textContent = 'Tap START AR to begin';
   resetAll();
 }
 
-// ORIGINAL controller select
-function onSelect() {
-  getTapPosition(); // Reuse logic
-}
-
-// NEW: Screen tap handler (fires on click/touch)
-function onScreenTap(e) {
+// FIXED TAP HANDLER – Fires on every click/touch
+function onTap(e) {
   e.preventDefault();
-  if (!session) return;
-  getTapPosition();
-}
+  console.log('Tap detected!'); // Debug – check console
 
-function getTapPosition() {
+  if (!isARActive) return;
+
   const frame = renderer.xr.getFrame();
-  if (!frame) return;
+  if (!frame) {
+    console.log('No frame – skipping');
+    return;
+  }
 
   let position = new THREE.Vector3();
 
-  // Hit-test
+  // Hit-test for surface placement
   if (hitTestSource && referenceSpace) {
     const hitTestResults = frame.getHitTestResults(hitTestSource);
     if (hitTestResults.length > 0) {
@@ -123,28 +119,29 @@ function getTapPosition() {
       const pose = hit.getPose(referenceSpace);
       if (pose) {
         position.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
-        console.log('Point placed at:', position.x, position.y, position.z);
+        console.log('Hit-test point at:', position);
       }
     }
   }
 
-  // Fallback
+  // Fallback: Place in front of camera (always works)
   if (position.lengthSq() === 0) {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
-    position.copy(camera.position).add(direction.multiplyScalar(0.8)); // Closer for mobile
-    console.log('Fallback point at:', position.x, position.y, position.z);
+    position.copy(camera.position).add(direction.multiplyScalar(0.6)); // Close range for mobile
+    console.log('Fallback point at:', position);
   }
 
   placePoint(position);
 }
 
 function placePoint(position) {
-  const dotGeometry = new THREE.SphereGeometry(0.02, 32, 32);
+  // BIGGER, BRIGHTER GREEN DOT
+  const dotGeometry = new THREE.SphereGeometry(0.03, 32, 32); // Increased size
   const dotMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x00ff00, 
     emissive: 0x00ff00, 
-    emissiveIntensity: 1.2 
+    emissiveIntensity: 2 // Glow brighter
   });
   const dot = new THREE.Mesh(dotGeometry, dotMaterial);
   dot.position.copy(position);
@@ -155,14 +152,14 @@ function placePoint(position) {
   lines.forEach(line => scene.remove(line));
   lines = [];
 
-  // Yellow lines
+  // THICKER YELLOW LINES
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
       const lineGeometry = new THREE.BufferGeometry().setFromPoints([
         points[i - 1].position,
         points[i].position
       ]);
-      const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 });
+      const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 8 }); // Thicker
       const line = new THREE.Line(lineGeometry, lineMaterial);
       scene.add(line);
       lines.push(line);
@@ -190,7 +187,7 @@ function updateInfo() {
 
   info.innerHTML = `
     <strong>Points: ${points.length}</strong><br>
-    Total Distance: <strong>${totalDistance.toFixed(3)} m</strong><br>
+    Total: <strong>${totalDistance.toFixed(3)} m</strong><br>
     Last: <strong>${lastDistance.toFixed(3)} m</strong><br>
     <small>Double-tap to reset</small>
   `;
@@ -201,11 +198,13 @@ function resetAll() {
   lines.forEach(line => scene.remove(line));
   points = [];
   lines = [];
-  if (session) updateInfo();
+  updateInfo();
 }
 
 function animate() {
   renderer.setAnimationLoop((time, frame) => {
-    renderer.render(scene, camera);
+    if (frame) {
+      renderer.render(scene, camera);
+    }
   });
 }
