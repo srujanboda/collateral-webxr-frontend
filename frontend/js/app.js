@@ -12,7 +12,7 @@ animate();
 
 function init() {
   scene = new THREE.Scene();
-  scene.background = null; // Ensure transparent/AR passthrough
+  scene.background = null; // AR passthrough
 
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
@@ -20,13 +20,13 @@ function init() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
-  renderer.setClearColor(0x000000, 0); // No black background
+  renderer.setClearColor(0x000000, 0); // Transparent
   document.body.appendChild(renderer.domElement);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
   controller = renderer.xr.getController(0);
-  controller.addEventListener('select', onSelect);
+  controller.addEventListener('select', onSelect); // Keep for fallback
   scene.add(controller);
 
   // Double-tap to reset
@@ -35,6 +35,10 @@ function init() {
     if (Date.now() - lastTap < 400) resetAll();
     lastTap = Date.now();
   });
+
+  // NEW: Direct screen tap listener for mobile reliability
+  renderer.domElement.addEventListener('click', onScreenTap, { passive: false });
+  renderer.domElement.addEventListener('touchstart', onScreenTap, { passive: false });
 
   button.addEventListener('click', startAR);
 
@@ -59,32 +63,27 @@ async function startAR() {
   }
 
   try {
-    console.log('Requesting AR session...'); // Debug log
+    console.log('Starting AR session...');
     session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
       optionalFeatures: ['dom-overlay', 'local-floor'],
       domOverlay: { root: document.body }
     });
 
-    console.log('Session started, setting renderer...'); // Debug
     document.body.classList.add('ar-active');
     button.textContent = 'STOP AR';
-    info.textContent = 'Loading camera... Tap anywhere to place a point';
+    info.textContent = 'Camera ready! Tap anywhere to place a point';
 
     await renderer.xr.setSession(session);
-    console.log('Renderer set, requesting hit-test...'); // Debug
-
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    info.textContent = 'Camera ready! Tap anywhere to place a point';
-    console.log('AR fully ready'); // Debug
-
+    console.log('AR ready - taps enabled');
     session.addEventListener('end', onSessionEnd);
 
   } catch (error) {
-    console.error('AR Error:', error); // Log full error
-    info.textContent = 'AR failed: ' + error.message + '. Try reloading.';
+    console.error('AR Error:', error);
+    info.textContent = 'AR failed: ' + error.message;
   }
 }
 
@@ -98,15 +97,25 @@ function onSessionEnd() {
   resetAll();
 }
 
+// ORIGINAL controller select
 function onSelect() {
-  if (!session) return;
+  getTapPosition(); // Reuse logic
+}
 
+// NEW: Screen tap handler (fires on click/touch)
+function onScreenTap(e) {
+  e.preventDefault();
+  if (!session) return;
+  getTapPosition();
+}
+
+function getTapPosition() {
   const frame = renderer.xr.getFrame();
   if (!frame) return;
 
   let position = new THREE.Vector3();
 
-  // Hit-test for exact placement
+  // Hit-test
   if (hitTestSource && referenceSpace) {
     const hitTestResults = frame.getHitTestResults(hitTestSource);
     if (hitTestResults.length > 0) {
@@ -114,29 +123,28 @@ function onSelect() {
       const pose = hit.getPose(referenceSpace);
       if (pose) {
         position.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
-        console.log('Hit-test success at:', position); // Debug
+        console.log('Point placed at:', position.x, position.y, position.z);
       }
     }
   }
 
-  // Fallback: Place in front of camera
+  // Fallback
   if (position.lengthSq() === 0) {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
-    position.copy(camera.position).add(direction.multiplyScalar(1.0)); // Shorter for mobile
-    console.log('Fallback placement at:', position); // Debug
+    position.copy(camera.position).add(direction.multiplyScalar(0.8)); // Closer for mobile
+    console.log('Fallback point at:', position.x, position.y, position.z);
   }
 
   placePoint(position);
 }
 
 function placePoint(position) {
-  // Green glowing dot
   const dotGeometry = new THREE.SphereGeometry(0.02, 32, 32);
   const dotMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x00ff00, 
     emissive: 0x00ff00, 
-    emissiveIntensity: 1 
+    emissiveIntensity: 1.2 
   });
   const dot = new THREE.Mesh(dotGeometry, dotMaterial);
   dot.position.copy(position);
@@ -147,7 +155,7 @@ function placePoint(position) {
   lines.forEach(line => scene.remove(line));
   lines = [];
 
-  // Draw yellow lines between points
+  // Yellow lines
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
       const lineGeometry = new THREE.BufferGeometry().setFromPoints([
@@ -193,17 +201,11 @@ function resetAll() {
   lines.forEach(line => scene.remove(line));
   points = [];
   lines = [];
-  if (session) {
-    updateInfo();
-  }
+  if (session) updateInfo();
 }
 
 function animate() {
   renderer.setAnimationLoop((time, frame) => {
-    if (frame) {
-      renderer.render(scene, camera);
-    } else {
-      renderer.render(scene, camera); // Fallback render
-    }
+    renderer.render(scene, camera);
   });
 }
