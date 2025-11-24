@@ -55,6 +55,9 @@ function init() {
     });
   }
   document.body.appendChild(arButton);
+  arButton.addEventListener('click', () => {
+  document.getElementById('startBtn').style.display = 'none';
+});
 
   // Lighting (brighter for better visibility)
   const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3);
@@ -208,13 +211,16 @@ function handleHitTest(frame) {
 }
 
 // Session Start with Scan Prompt
-renderer.xr.addEventListener('sessionstart', async (event) => {
+renderer.xr.addEventListener('sessionstart', async () => {
   const session = renderer.xr.getSession();
   referenceSpace = await session.requestReferenceSpace('viewer');
   hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
-  document.getElementById('info').innerHTML += '<br><em>Scanning... Move phone to detect walls/books!</em>';
-});
 
+  document.body.classList.remove("measurement-active");
+  document.getElementById('overlay').style.pointerEvents = 'none';
+  document.getElementById('resetBtn').style.display = 'block';
+  document.getElementById('info').innerHTML += '<br><em>Scanning... Move phone slowly!</em>';
+});
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
