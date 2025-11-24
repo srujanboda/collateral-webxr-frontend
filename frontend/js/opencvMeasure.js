@@ -19,14 +19,15 @@ let points = [];
     video.srcObject = stream;
     video.play();
 
-    video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.style.pointerEvents = "auto";
-      video.style.display = "block";
-      info.textContent = "Ready! Tap to measure";
-      draw();
-    };
+  video.onloadedmetadata = () => {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  document.body.classList.add("measurement-active");  // This enables taps!
+  canvas.style.pointerEvents = "auto";
+  video.style.display = "block";
+  info.textContent = "Ready! Tap anywhere to place points";
+  draw();
+};
   } catch (err) {
     info.textContent = "Camera failed: " + err.message;
     console.error(err);
