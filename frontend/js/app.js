@@ -24,16 +24,16 @@ function init() {
   renderer.setClearColor(0x000000, 0);
   document.body.appendChild(renderer.domElement);
 
-  // Reticle (green ring – aim here to place dots)
+  // Smaller ring (cursor) – 2cm on screen
   reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 1, transparent: true, emissive: 0x004400 })
+    new THREE.RingGeometry(0.02, 0.03, 32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.8, transparent: true, emissive: 0x004400 })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 10)); // Super bright for visibility
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 5));
 
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', () => { pendingPlacement = true; });
@@ -46,9 +46,9 @@ function init() {
     lastTap = Date.now();
   });
 
-  // Tap anywhere to place (mobile-friendly)
-  renderer.domElement.addEventListener('click', () => { pendingPlacement = true; });
-  renderer.domElement.addEventListener('touchend', () => { pendingPlacement = true; });
+  // Tap to place
+  renderer.domElement.addEventListener('click', () => { if (isARActive) pendingPlacement = true; });
+  renderer.domElement.addEventListener('touchend', () => { if (isARActive) pendingPlacement = true; });
 
   button.addEventListener('click', startAR);
 
@@ -84,8 +84,8 @@ async function startAR() {
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    reticle.visible = true;
-    info.textContent = 'Point green ring at surface & tap to place dot';
+    reticle.visible = true; // Show small ring
+    info.textContent = 'Point & tap to place dot';
 
     session.addEventListener('end', onSessionEnd);
 
@@ -115,24 +115,26 @@ function animate() {
         const hit = hitTestResults[0];
         const pose = hit.getPose(referenceSpace);
         if (pose) {
+          // FIXED: Full matrix update for smooth camera tracking
           reticle.matrix.fromArray(pose.transform.matrix);
+          reticle.matrixDecompose(reticle.position, reticle.quaternion, reticle.scale); // Extract position/rotation
+          reticle.updateMatrixWorld(true); // Force update
           reticle.visible = true;
 
-          // AUTO-PLACEMENT ON TAP (key fix)
+          // Place dot on tap
           if (pendingPlacement) {
             pendingPlacement = false;
-            const position = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
-            placePoint(position);
+            placePoint(reticle.position.clone());
           }
         }
       } else {
         reticle.visible = false;
         if (pendingPlacement) {
           pendingPlacement = false;
-          // Fallback placement in front of camera
+          // Fallback position
           const direction = new THREE.Vector3();
           camera.getWorldDirection(direction);
-          const position = camera.position.clone().add(direction.multiplyScalar(0.5));
+          const position = camera.position.clone().add(direction.multiplyScalar(0.6));
           placePoint(position);
         }
       }
@@ -144,22 +146,20 @@ function animate() {
 function placePoint(position) {
   console.log('Dot placed at:', position); // Debug
 
-  // HUGE, BRIGHT GREEN DOT
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.04, 32, 32), // Bigger
-    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 3 }) // Super glow
+    new THREE.SphereGeometry(0.025, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2 })
   );
   dot.position.copy(position);
   scene.add(dot);
   points.push(dot);
 
-  // Clear & redraw lines
   lines.forEach(l => scene.remove(l));
   lines = [];
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
       const geom = new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]);
-      const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 10 })); // Thicker
+      const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 8 }));
       scene.add(line);
       lines.push(line);
     }
@@ -181,5 +181,5 @@ function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
   points = []; lines = [];
-  if (isARActive) info.textContent = 'Point green ring at surface & tap to place dot';
+  if (isARActive) info.textContent = 'Point & tap to place dot';
 }
