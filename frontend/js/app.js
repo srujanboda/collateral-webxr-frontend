@@ -2,9 +2,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.mod
 
 let camera, scene, renderer, controller;
 let points = [], lines = [];
-let hitTestSource = null;
-let session = null;
-let referenceSpace = null;
+let hitTestSource = null, session = null, referenceSpace = null;
 
 const info = document.getElementById('info');
 const button = document.getElementById('arButton');
@@ -36,24 +34,15 @@ function init() {
   });
 
   button.onclick = startAR;
-
-  window.addEventListener('resize', () => {
+  window.onresize = () => {
     camera.aspect = innerWidth/innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
-  });
+  };
 }
 
 async function startAR() {
-  if (session) {
-    session.end();
-    return;
-  }
-
-  if (!navigator.xr || !await navigator.xr.isSessionSupported('immersive-ar')) {
-    info.textContent = 'AR not supported on this device';
-    return;
-  }
+  if (session) { session.end(); return; }
 
   try {
     session = await navigator.xr.requestSession('immersive-ar', {
@@ -64,105 +53,94 @@ async function startAR() {
 
     document.body.classList.add('ar-active');
     button.textContent = 'STOP AR';
-    info.textContent = 'Tap anywhere to measure';
+    info.textContent = 'Tap anywhere to place point';
 
     await renderer.xr.setSession(session);
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    session.addEventListener('end', onSessionEnd);
+    session.addEventListener('end', () => {
+      session = null; hitTestSource = null;
+      document.body.classList.remove('ar-active');
+      button.textContent = 'START AR';
+      info.textContent = 'Tap START AR to begin';
+      resetAll();
+    });
 
   } catch(e) {
-    info.textContent = 'AR failed – use latest Chrome';
+    info.textContent = 'AR not supported or denied';
     console.error(e);
   }
 }
 
-function onSessionEnd() {
-  session = null; hitTestSource = null; referenceSpace = null;
-  document.body.classList.remove('ar-active');
-  button.textContent = 'START AR';
-  info.textContent = 'Tap START AR';
-  resetAll();
-}
-
 function onSelect() {
   if (!session) return;
-
   const frame = renderer.xr.getFrame();
   if (!frame) return;
 
-  let position = null;
+  let pos = new THREE.Vector3();
 
-  // REAL hit-test (works perfectly on mobile)
   if (hitTestSource) {
-    const hitTestResults = frame.getHitTestResults(hitTestSource);
-    if (hitTestResults.length > 0) {
-      const pose = hitTestResults[0].getPose(referenceSpace);
-      position = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
+    const hits = frame.getHitTestResults(hitTestSource);
+    if (hits.length > 0) {
+      const hit = hits[0];
+      const pose = hit.getPose(referenceSpace);
+      pos.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
     }
   }
 
-  // Fallback – still good enough if surface not detected
-  if (!position) {
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    position = camera.position.clone().add(dir.multiplyScalar(1.5));
+  if (pos.lengthSq() === 0) {
+    camera.getWorldDirection(pos);
+    pos.multiplyScalar(1.2).add(camera.position);
   }
 
-  placePoint(position);
+  placePoint(pos);
 }
 
-function placePoint(pos) {
-  // Green dot
+function placePoint(p) {
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 32, 32),
-    new THREE.MeshStandardMaterial({ color:0x00ff00, emissive:0x00ff00, emissiveIntensity:2 })
+    new THREE.SphereGeometry(0.018, 32, 32),
+    new THREE.MeshStandardMaterial({ color:0x00ff00, emissive:0x00ff00, emissiveIntensity:1 })
   );
-  dot.position.copy(pos);
+  dot.position.copy(p);
   scene.add(dot);
   points.push(dot);
 
-  // Yellow lines
   lines.forEach(l => scene.remove(l));
   lines = [];
+
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
-      const geometry = new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]);
-      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color:0xffff00, linewidth:12 }));
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
+        new THREE.LineBasicMaterial({ color:0xffff00, linewidth:6 })
+      );
       scene.add(line);
       lines.push(line);
     }
   }
-
   updateInfo();
 }
 
 function updateInfo() {
-  if (points.length === 0) {
-    info.textContent = 'Tap anywhere to measure';
-    return;
-  }
+  if (points.length === 0) return;
   let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    total += points[i].position.distanceTo(points[i-1].position);
-  }
-  const last = points.length > 1 ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3) : '0';
+  for (let i = 1; i < points.length; i++) total += points[i].position.distanceTo(points[i-1].position);
+  const last = points.length > 1 ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3) : 0;
 
-  info.innerHTML = `<strong>Points: ${points.length}</strong><br>
-    Total Distance: <strong>${total.toFixed(3)} m</strong> | Last: ${last} m<br>
-    <small>Double-tap to reset</small>`;
+  info.innerHTML = `<strong>${points.length} points</strong><br>
+    Total: <strong>${total.toFixed(3)} m</strong><br>
+    Last: ${last} m<br>
+    <small>Double-tap → reset</small>`;
 }
 
 function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
   points = []; lines = [];
-  if (session) info.textContent = 'Tap anywhere to measure';
+  if (session) info.textContent = 'Tap anywhere to place point';
 }
 
 function animate() {
-  renderer.setAnimationLoop((time, frame) => {
-    renderer.render(scene, camera);
-  });
+  renderer.setAnimationLoop((t, f) => renderer.render(scene, camera));
 }
