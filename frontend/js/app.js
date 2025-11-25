@@ -116,13 +116,11 @@ function animate(time, frame) {
 }
 
 function placePoint(pos) {
-  // Tiny bright dot
+  // Tiny bright dot with better visibility
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.01, 24, 16),
-    new THREE.MeshStandardMaterial({
-      color: 0x00ff00,
-      emissive: 0x00ff00,
-      emissiveIntensity: 2
+    new THREE.SphereGeometry(0.015, 24, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0x00ff00
     })
   );
   dot.position.copy(pos);
