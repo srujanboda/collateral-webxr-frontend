@@ -23,10 +23,10 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Tiny aiming ring (barely visible, just for precision)
+  // Very small reticle (just for aiming — almost invisible)
   reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.6, transparent: true })
+    new THREE.RingGeometry(0.015, 0.02, 32).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, opacity: 0.5, transparent: true })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
@@ -38,14 +38,14 @@ function init() {
   controller.addEventListener('select', () => pendingPlacement = true);
   scene.add(controller);
 
-  // Double-tap reset
+  // Double-tap to reset
   let lastTap = 0;
   controller.addEventListener('select', () => {
     if (Date.now() - lastTap < 400) resetAll();
     lastTap = Date.now();
   });
 
-  // Tap support
+  // Tap anywhere → place dot
   renderer.domElement.addEventListener('click', () => pendingPlacement = true);
   renderer.domElement.addEventListener('touchend', e => { e.preventDefault(); pendingPlacement = true; });
 
@@ -68,7 +68,7 @@ async function startAR() {
 
   document.body.classList.add('ar-active');
   button.textContent = 'STOP AR';
-  info.textContent = 'Point & tap to measure';
+  info.textContent = 'Tap anywhere to measure';
 
   await renderer.xr.setSession(session);
   referenceSpace = await session.requestReferenceSpace('viewer');
@@ -102,7 +102,7 @@ function animate() {
           pendingPlacement = false;
           const dir = new THREE.Vector3();
           camera.getWorldDirection(dir);
-          placePoint(camera.position.clone().add(dir.multiplyScalar(0.6)));
+          placePoint(camera.position.clone().add(dir.multiplyScalar(0.7)));
         }
       }
     }
@@ -111,23 +111,27 @@ function animate() {
 }
 
 function placePoint(pos) {
-  // Tiny realistic green dot (1.5 cm)
+  // TINY & PERFECT green dot — 1 cm real-world size
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.015, 32, 16),
-    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.5 })
+    new THREE.SphereGeometry(0.01, 24, 16),  // ← Super small & clean
+    new THREE.MeshStandardMaterial({
+      color: 0x00ff00,
+      emissive: 0x00ff00,
+      emissiveIntensity: 1.2
+    })
   );
   dot.position.copy(pos);
   scene.add(dot);
   points.push(dot);
 
-  // Clean & redraw lines
+  // Redraw yellow lines
   lines.forEach(l => scene.remove(l));
   lines = [];
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
-        new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 })
+        new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 5 })
       );
       scene.add(line);
       lines.push(line);
@@ -140,15 +144,24 @@ function placePoint(pos) {
 function updateInfo() {
   if (!points.length) return;
   let total = 0;
-  for (let i = 1; i < points.length; i++) total += points[i].position.distanceTo(points[i-1].position);
-  const last = points.length > 1 ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3) : 0;
+  for (let i = 1; i < points.length; i++) {
+    total += points[i].position.distanceTo(points[i-1].position);
+  }
+  const last = points.length > 1
+    ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3)
+    : 0;
 
-  info.innerHTML = `<strong>${points.length} pts</strong><br>Total: <strong>${total.toFixed(3)} m</strong><br>Last: ${last} m<br><small>Double-tap to reset</small>`;
+  info.innerHTML = `
+    <strong>${points.length} pts</strong><br>
+    Total: <strong>${total.toFixed(3)} m</strong><br>
+    Last: ${last} m<br>
+    <small>Double-tap to reset</small>
+  `;
 }
 
 function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
   points = []; lines = [];
-  if (session) info.textContent = 'Point & tap to measure';
+  if (session) info.textContent = 'Tap anywhere to measure';
 }
