@@ -9,7 +9,6 @@ const info = document.getElementById('info');
 const button = document.getElementById('arButton');
 
 init();
-animate();
 
 function init() {
   scene = new THREE.Scene();
@@ -23,10 +22,10 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Very small reticle (just for aiming — almost invisible)
+  // Tiny reticle (almost invisible)
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.015, 0.02, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff88, opacity: 0.5, transparent: true })
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, opacity: 0.4, transparent: true })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
@@ -38,14 +37,13 @@ function init() {
   controller.addEventListener('select', () => pendingPlacement = true);
   scene.add(controller);
 
-  // Double-tap to reset
+  // Double-tap reset
   let lastTap = 0;
   controller.addEventListener('select', () => {
     if (Date.now() - lastTap < 400) resetAll();
     lastTap = Date.now();
   });
 
-  // Tap anywhere → place dot
   renderer.domElement.addEventListener('click', () => pendingPlacement = true);
   renderer.domElement.addEventListener('touchend', e => { e.preventDefault(); pendingPlacement = true; });
 
@@ -60,71 +58,77 @@ function init() {
 async function startAR() {
   if (session) { session.end(); return; }
 
-  session = await navigator.xr.requestSession('immersive-ar', {
-    requiredFeatures: ['hit-test'],
-    optionalFeatures: ['dom-overlay'],
-    domOverlay: { root: document.body }
-  });
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'local-floor'],
+      domOverlay: { root: document.body }
+    });
 
-  document.body.classList.add('ar-active');
-  button.textContent = 'STOP AR';
-  info.textContent = 'Tap anywhere to measure';
+    document.body.classList.add('ar-active');
+    button.textContent = 'STOP AR';
+    info.textContent = 'Tap anywhere to measure';
 
-  await renderer.xr.setSession(session);
-  referenceSpace = await session.requestReferenceSpace('viewer');
-  hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
+    // CRITICAL FIX – these two lines in this exact order
+    renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(session);
 
-  session.addEventListener('end', () => {
-    session = null; hitTestSource = null; referenceSpace = null;
-    document.body.classList.remove('ar-active');
-    button.textContent = 'START AR';
-    info.textContent = 'Tap START AR to begin';
-    resetAll();
-  });
+    referenceSpace = await session.requestReferenceSpace('viewer');
+    hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
+
+    // Start animation loop only AFTER session is fully set
+    renderer.setAnimationLoop(animate);
+
+    session.addEventListener('end', () => {
+      renderer.setAnimationLoop(null);  // Stop loop on exit
+      session = null; hitTestSource = null; referenceSpace = null;
+      document.body.classList.remove('ar-active');
+      button.textContent = 'START AR';
+      info.textContent = 'Tap START AR to begin';
+      resetAll();
+    });
+
+  } catch (e) {
+    console.error(e);
+    info.textContent = 'AR not supported or denied';
+  }
 }
 
-function animate() {
-  renderer.setAnimationLoop((time, frame) => {
-    if (frame && hitTestSource) {
-      const hits = frame.getHitTestResults(hitTestSource);
-      if (hits.length > 0) {
-        const pose = hits[0].getPose(referenceSpace);
-        reticle.matrix.fromArray(pose.transform.matrix);
-        reticle.visible = true;
+function animate(time, frame) {
+  if (frame && hitTestSource) {
+    const hits = frame.getHitTestResults(hitTestSource);
+    if (hits.length > 0) {
+      const pose = hits[0].getPose(referenceSpace);
+      reticle.matrix.fromArray(pose.transform.matrix);
+      reticle.visible = true;
 
-        if (pendingPlacement) {
-          pendingPlacement = false;
-          placePoint(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
-        }
-      } else {
-        reticle.visible = false;
-        if (pendingPlacement) {
-          pendingPlacement = false;
-          const dir = new THREE.Vector3();
-          camera.getWorldDirection(dir);
-          placePoint(camera.position.clone().add(dir.multiplyScalar(0.7)));
-        }
+      if (pendingPlacement) {
+        pendingPlacement = false;
+        placePoint(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
+      }
+    } else {
+      reticle.visible = false;
+      if (pendingPlacement) {
+        pendingPlacement = false;
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        placePoint(camera.position.clone().add(dir.multiplyScalar(0.7)));
       }
     }
-    renderer.render(scene, camera);
-  });
+  }
+  renderer.render(scene, camera);
 }
 
 function placePoint(pos) {
-  // TINY & PERFECT green dot — 1 cm real-world size
+  // Tiny 1 cm dot
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.01, 24, 16),  // ← Super small & clean
-    new THREE.MeshStandardMaterial({
-      color: 0x00ff00,
-      emissive: 0x00ff00,
-      emissiveIntensity: 1.2
-    })
+    new THREE.SphereGeometry(0.01, 24, 16),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1.2 })
   );
   dot.position.copy(pos);
   scene.add(dot);
   points.push(dot);
 
-  // Redraw yellow lines
   lines.forEach(l => scene.remove(l));
   lines = [];
   if (points.length > 1) {
@@ -137,26 +141,16 @@ function placePoint(pos) {
       lines.push(line);
     }
   }
-
   updateInfo();
 }
 
 function updateInfo() {
   if (!points.length) return;
   let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    total += points[i].position.distanceTo(points[i-1].position);
-  }
-  const last = points.length > 1
-    ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3)
-    : 0;
+  for (let i = 1; i < points.length; i++) total += points[i].position.distanceTo(points[i-1].position);
+  const last = points.length > 1 ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3) : 0;
 
-  info.innerHTML = `
-    <strong>${points.length} pts</strong><br>
-    Total: <strong>${total.toFixed(3)} m</strong><br>
-    Last: ${last} m<br>
-    <small>Double-tap to reset</small>
-  `;
+  info.innerHTML = `<strong>${points.length} pts</strong><br>Total: <strong>${total.toFixed(3)} m</strong><br>Last: ${last} m<br><small>Double-tap reset</small>`;
 }
 
 function resetAll() {
