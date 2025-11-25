@@ -34,7 +34,6 @@ function init() {
 
   button.onclick = startAR;
 
-  // TAP = RING + DOT (works perfectly)
   renderer.domElement.addEventListener('touchend', onScreenTap);
   renderer.domElement.addEventListener('click', onScreenTap);
 
@@ -91,11 +90,9 @@ function onScreenTap(e) {
 
   let position;
   if (hitPose) {
-    // Exact surface hit
     position = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(hitPose.transform.matrix));
     reticle.matrix.fromArray(hitPose.transform.matrix);
   } else {
-    // Fallback: 70 cm in front of camera
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
     position = camera.position.clone().add(dir.multiplyScalar(0.7));
@@ -132,7 +129,7 @@ function placePoint(pos) {
   scene.add(dot);
   points.push(dot);
 
-  // Yellow line
+  // Rebuild all lines (connect each point to previous)
   lines.forEach(l => scene.remove(l));
   lines = [];
   if (points.length > 1) {
@@ -150,11 +147,39 @@ function placePoint(pos) {
 
 function updateInfo() {
   if (!points.length) return;
-  let total = 0;
-  for (let i = 1; i < points.length; i++) total += points[i].position.distanceTo(points[i-1].position);
-  const last = points.length > 1 ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3) : '0.000';
 
-  info.innerHTML = `<strong>${points.length} pts</strong><br>Total: <strong>${total.toFixed(3)} m</strong><br>Last: ${last} m<br><small>Double-tap to reset</small>`;
+  // Distance between consecutive points
+  let total = 0;
+  let distanceBreakdown = '';
+  for (let i = 1; i < points.length; i++) {
+    const segmentDist = points[i].position.distanceTo(points[i-1].position);
+    total += segmentDist;
+    distanceBreakdown += `P${i-1}→P${i}: ${segmentDist.toFixed(3)}m<br>`;
+  }
+
+  // Distance from camera to each point
+  let cameraDistances = '';
+  for (let i = 0; i < points.length; i++) {
+    const camDist = camera.position.distanceTo(points[i].position);
+    cameraDistances += `Camera→P${i}: ${camDist.toFixed(3)}m<br>`;
+  }
+
+  // Distance from first to last point (straight line)
+  let firstToLast = '0.000';
+  if (points.length > 1) {
+    firstToLast = points[0].position.distanceTo(points[points.length-1].position).toFixed(3);
+  }
+
+  info.innerHTML = `
+    <strong>Points: ${points.length}</strong><br>
+    <strong>Total Path: ${total.toFixed(3)} m</strong><br>
+    <strong>First→Last: ${firstToLast} m</strong><br>
+    <hr>
+    <small><strong>Segment Distances:</strong><br>${distanceBreakdown}</small>
+    <hr>
+    <small><strong>Camera Distances:</strong><br>${cameraDistances}</small>
+    <small>Double-tap to reset</small>
+  `;
 }
 
 // Double-tap reset
