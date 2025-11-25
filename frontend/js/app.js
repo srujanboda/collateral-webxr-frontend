@@ -77,10 +77,17 @@ async function startAR() {
 
 function onScreenTap(e) {
   e.preventDefault();
-  if (!session) return;
+  if (!session) {
+    console.log('No session active');
+    return;
+  }
 
   const frame = renderer.xr.getFrame();
-  if (!frame) return;
+  if (!frame) {
+    console.log('No frame');
+    return;
+  }
+  console.log('Tap registered, frame exists');
 
   let hitPose = null;
   if (hitTestSource) {
@@ -101,6 +108,7 @@ function onScreenTap(e) {
 
   reticle.visible = true;
   placePoint(position);
+  console.log('Point placed at:', position);
 }
 
 function animate(time, frame) {
@@ -126,6 +134,7 @@ function placePoint(pos) {
   dot.position.copy(pos);
   scene.add(dot);
   points.push(dot);
+  console.log(`Point ${points.length} placed at:`, pos);
 
   // Rebuild all lines (connect each point to previous)
   lines.forEach(l => scene.remove(l));
