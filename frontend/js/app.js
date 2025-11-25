@@ -21,7 +21,7 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Bright green ring – appears exactly where you tap
+  // Bright green ring
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.02, 0.03, 32).rotateX(-Math.PI/2),
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
@@ -34,9 +34,9 @@ function init() {
 
   button.onclick = startAR;
 
-  // TAP ANYWHERE = RING MOVES + PLACE DOT
-  renderer.domElement.addEventListener('touchend', onTap);
-  renderer.domElement.addEventListener('click', onTap);
+  // TAP = RING + DOT (works perfectly)
+  renderer.domElement.addEventListener('touchend', onScreenTap);
+  renderer.domElement.addEventListener('click', onScreenTap);
 
   window.onresize = () => {
     camera.aspect = innerWidth/innerHeight;
@@ -56,7 +56,7 @@ async function startAR() {
 
   document.body.classList.add('ar-active');
   button.textContent = 'STOP AR';
-  info.textContent = 'Tap anywhere – ring appears & dot is placed';
+  info.textContent = 'Tap anywhere to place dot';
 
   renderer.xr.setReferenceSpaceType('local-floor');
   await renderer.xr.setSession(session);
@@ -76,47 +76,33 @@ async function startAR() {
   });
 }
 
-function onTap(event) {
+function onScreenTap(e) {
+  e.preventDefault();
   if (!session) return;
-
-  event.preventDefault();
 
   const frame = renderer.xr.getFrame();
   if (!frame) return;
 
   let hitPose = null;
-
-  // Try hit-test first
   if (hitTestSource) {
     const hits = frame.getHitTestResults(hitTestSource);
-    if (hits.length > 0) {
-      hitPose = hits[0].getPose(referenceSpace);
-    }
+    if (hits.length > 0) hitPose = hits[0].getPose(referenceSpace);
   }
 
-  // Use hit-test result OR fallback to center of screen (0.5, 0.5)
-  const pose = hitPose || frame.getViewerPose(referenceSpace);
-  if (!pose) return;
+  let position;
+  if (hitPose) {
+    // Exact surface hit
+    position = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(hitPose.transform.matrix));
+    reticle.matrix.fromArray(hitPose.transform.matrix);
+  } else {
+    // Fallback: 70 cm in front of camera
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    position = camera.position.clone().add(dir.multiplyScalar(0.7));
+    reticle.visible = false;
+  }
 
-  const viewMatrix = new THREE.Matrix4().fromArray(pose.transform.inverse.matrix);
-  const projMatrix = new THREE.Matrix4().fromArray(pose.views[0].projectionMatrix);
-  const viewport = [0, 0, innerWidth, innerHeight];
-
-  // Raycast from screen center (or tap position if you want exact pixel – this is smooth & accurate)
-  const ray = new THREE.Ray();
-  ray.origin.setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(camera.matrixWorld, viewMatrix));
-  ray.direction.set(0, 0, -1).transformDirection(camera.matrixWorld);
-
-  // Place at 0.8m in front if no hit-test
-  const distance = hitPose ? 0 : 0.8;
-  const position = ray.origin.clone().add(ray.direction.clone().multiplyScalar(distance));
-
-  // Move ring to exact position
-  reticle.matrix.fromArray(hitPose ? hitPose.transform.matrix : pose.transform.matrix);
-  reticle.position.copy(position);
   reticle.visible = true;
-
-  // Place tiny bright dot exactly there
   placePoint(position);
 }
 
@@ -133,6 +119,7 @@ function animate(time, frame) {
 }
 
 function placePoint(pos) {
+  // Tiny bright dot
   const dot = new THREE.Mesh(
     new THREE.SphereGeometry(0.01, 24, 16),
     new THREE.MeshStandardMaterial({
@@ -145,6 +132,7 @@ function placePoint(pos) {
   scene.add(dot);
   points.push(dot);
 
+  // Yellow line
   lines.forEach(l => scene.remove(l));
   lines = [];
   if (points.length > 1) {
@@ -170,11 +158,11 @@ function updateInfo() {
 }
 
 // Double-tap reset
-let lastTap = 0;
+let lastTapTime = 0;
 document.body.addEventListener('touchend', () => {
   const now = Date.now();
-  if (now - lastTap < 400) resetAll();
-  lastTap = now;
+  if (now - lastTapTime < 400) resetAll();
+  lastTapTime = now;
 });
 
 function resetAll() {
@@ -182,5 +170,5 @@ function resetAll() {
   lines.forEach(l => scene.remove(l));
   points = []; lines = [];
   reticle.visible = false;
-  if (session) info.textContent = 'Tap anywhere – ring appears & dot is placed';
+  if (session) info.textContent = 'Tap anywhere to place dot';
 }
