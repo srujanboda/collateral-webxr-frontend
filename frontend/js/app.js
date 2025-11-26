@@ -3,12 +3,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.mod
 let camera, scene, renderer, reticle;
 let points = [], lines = [];
 let hitTestSource = null, session = null, referenceSpace = null;
-let xrSession = null;
 
 const info = document.getElementById('info');
 const button = document.getElementById('arButton');
 
 init();
+animate();
 
 function init() {
   scene = new THREE.Scene();
@@ -22,19 +22,22 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Bright green ring
+  // Neon green ring (small, follows tap exactly)
   reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.02, 0.03, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1 })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 8));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 5));
+
+  // Tap anywhere → ring to tap + place dot
+  renderer.domElement.addEventListener('touchend', onTap);
+  renderer.domElement.addEventListener('click', onTap);
 
   button.onclick = startAR;
-
   window.onresize = () => {
     camera.aspect = innerWidth/innerHeight;
     camera.updateProjectionMatrix();
@@ -43,10 +46,7 @@ function init() {
 }
 
 async function startAR() {
-  if (session) { 
-    session.end(); 
-    return; 
-  }
+  if (session) { session.end(); return; }
 
   try {
     session = await navigator.xr.requestSession('immersive-ar', {
@@ -54,11 +54,10 @@ async function startAR() {
       optionalFeatures: ['dom-overlay', 'local-floor'],
       domOverlay: { root: document.body }
     });
-    xrSession = session;
 
     document.body.classList.add('ar-active');
     button.textContent = 'STOP AR';
-    info.textContent = 'Tap anywhere to place dot';
+    info.textContent = 'Tap anywhere to place point';
 
     renderer.xr.setReferenceSpaceType('local-floor');
     await renderer.xr.setSession(session);
@@ -66,192 +65,114 @@ async function startAR() {
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    // Start animation loop
-    renderer.setAnimationLoop((time, frame) => animate(time, frame));
+    renderer.setAnimationLoop(animate);
 
     session.addEventListener('end', () => {
       renderer.setAnimationLoop(null);
-      session = null;
-      xrSession = null;
-      hitTestSource = null;
-      referenceSpace = null;
+      session = null; hitTestSource = null; referenceSpace = null;
       document.body.classList.remove('ar-active');
       button.textContent = 'START AR';
       info.textContent = 'Tap START AR to begin';
       resetAll();
     });
 
-    // Add tap listener
-    renderer.domElement.addEventListener('click', onScreenTap);
-    
-  } catch (err) {
-    console.error('WebXR error:', err);
-    info.textContent = 'WebXR failed: ' + err.message;
+  } catch (e) {
+    info.textContent = 'AR not supported or denied';
   }
 }
 
-function onScreenTap(e) {
+function onTap(e) {
   e.preventDefault();
-  
-  if (!xrSession || !renderer.xr.getFrame) {
-    console.log('No active XR session');
-    return;
-  }
+  if (!session) return;
 
-  try {
-    const frame = renderer.xr.getFrame();
-    if (!frame) {
-      console.log('No frame available');
-      return;
-    }
+  const frame = renderer.xr.getFrame();
+  if (!frame) return;
 
-    let hitPose = null;
-    if (hitTestSource) {
-      const hits = frame.getHitTestResults(hitTestSource);
-      if (hits.length > 0) {
-        hitPose = hits[0].getPose(referenceSpace);
-      }
-    }
+  let position = new THREE.Vector3();
 
-    let position;
-    if (hitPose) {
-      position = new THREE.Vector3().setFromMatrixPosition(
-        new THREE.Matrix4().fromArray(hitPose.transform.matrix)
-      );
-      reticle.matrix.fromArray(hitPose.transform.matrix);
+  // Hit-test for exact tap position
+  if (hitTestSource) {
+    const hits = frame.getHitTestResults(hitTestSource);
+    if (hits.length > 0) {
+      const pose = hits[0].getPose(referenceSpace);
+      position.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
+      reticle.matrix.fromArray(pose.transform.matrix);
       reticle.visible = true;
     } else {
-      // Fallback: place 1 meter in front of camera
-      const dir = new THREE.Vector3(0, 0, -1);
+      // Fallback: Center screen, 60cm in front
+      const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
-      position = camera.position.clone().add(dir.multiplyScalar(1));
+      position = camera.position.clone().add(dir.multiplyScalar(0.6));
       reticle.visible = false;
     }
-
-    placePoint(position);
-    console.log('Point placed at:', position);
-    
-  } catch (err) {
-    console.error('Tap error:', err);
+  } else {
+    // No hit-test: fallback
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    position = camera.position.clone().add(dir.multiplyScalar(0.6));
   }
+
+  placePoint(position);
 }
 
 function animate(time, frame) {
-  if (frame && hitTestSource && referenceSpace) {
-    try {
-      const hits = frame.getHitTestResults(hitTestSource);
-      if (hits.length > 0) {
-        const pose = hits[0].getPose(referenceSpace);
-        reticle.matrix.fromArray(pose.transform.matrix);
-        reticle.visible = true;
-      } else {
-        reticle.visible = false;
-      }
-    } catch (err) {
-      console.error('Hit test error:', err);
+  if (frame && hitTestSource) {
+    const hits = frame.getHitTestResults(hitTestSource);
+    if (hits.length > 0) {
+      const pose = hits[0].getPose(referenceSpace);
+      reticle.matrix.fromArray(pose.transform.matrix);
+      reticle.visible = true;
     }
   }
   renderer.render(scene, camera);
 }
 
 function placePoint(pos) {
-  // Bright green sphere
+  // Tiny bright dot
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 24, 16),
-    new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-      emissive: 0x00ff00
-    })
+    new THREE.SphereGeometry(0.01, 24, 16),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2 })
   );
   dot.position.copy(pos);
   scene.add(dot);
   points.push(dot);
-  console.log(`Point ${points.length} placed at:`, pos);
 
-  // Rebuild all lines (connect each point to previous)
   lines.forEach(l => scene.remove(l));
   lines = [];
-  
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
       const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          points[i-1].position, 
-          points[i].position
-        ]),
-        new THREE.LineBasicMaterial({ 
-          color: 0xffff00, 
-          linewidth: 8,
-          emissive: 0xffff00
-        })
+        new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
+        new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 })
       );
       scene.add(line);
       lines.push(line);
     }
   }
-  
   updateInfo();
 }
 
 function updateInfo() {
   if (!points.length) return;
-
-  // Distance between consecutive points
   let total = 0;
-  let distanceBreakdown = '';
-  for (let i = 1; i < points.length; i++) {
-    const segmentDist = points[i].position.distanceTo(points[i-1].position);
-    total += segmentDist;
-    distanceBreakdown += `P${i-1}→P${i}: ${segmentDist.toFixed(3)}m `;
-  }
+  for (let i = 1; i < points.length; i++) total += points[i].position.distanceTo(points[i-1].position);
+  const last = points.length > 1 ? points[points.length-1].position.distanceTo(points[points.length-2].position).toFixed(3) : '0.000';
 
-  // Distance from camera to each point
-  let cameraDistances = '';
-  for (let i = 0; i < points.length; i++) {
-    const camDist = camera.position.distanceTo(points[i].position);
-    cameraDistances += `Cam→P${i}: ${camDist.toFixed(3)}m `;
-  }
-
-  // Distance from first to last point (straight line)
-  let firstToLast = '0.000';
-  if (points.length > 1) {
-    firstToLast = points[0].position.distanceTo(points[points.length-1].position).toFixed(3);
-  }
-
-  // Camera to first and last point
-  let camToFirst = camera.position.distanceTo(points[0].position).toFixed(3);
-  let camToLast = points.length > 1 
-    ? camera.position.distanceTo(points[points.length-1].position).toFixed(3)
-    : camToFirst;
-
-  info.innerHTML = `
-    <strong>📍 Points: ${points.length}</strong><br>
-    <strong>📏 Total Path: ${total.toFixed(3)}m</strong><br>
-    <strong>➡️ First→Last: ${firstToLast}m</strong><br>
-    <strong>📹 Cam→First: ${camToFirst}m</strong><br>
-    <strong>📹 Cam→Last: ${camToLast}m</strong><br>
-    <hr>
-    <small>Segments: ${distanceBreakdown}</small><br>
-    <small>Camera Dists: ${cameraDistances}</small><br>
-    <small>Double-tap to reset</small>
-  `;
+  info.innerHTML = `<strong>${points.length} pts</strong><br>Total: <strong>${total.toFixed(3)} m</strong><br>Last: ${last} m<br><small>Double-tap to reset</small>`;
 }
 
 // Double-tap reset
 let lastTapTime = 0;
 document.body.addEventListener('touchend', () => {
   const now = Date.now();
-  if (now - lastTapTime < 400) {
-    resetAll();
-    if (xrSession) info.textContent = 'Tap anywhere to place dot';
-  }
+  if (now - lastTapTime < 400) resetAll();
   lastTapTime = now;
 });
 
 function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
-  points = [];
-  lines = [];
+  points = []; lines = [];
   reticle.visible = false;
+  if (session) info.textContent = 'Tap anywhere to place point';
 }
