@@ -28,7 +28,7 @@ function init() {
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
   );
   reticle.matrixAutoUpdate = false;
-  reticle.visible = false;
+  reticle.visible = true;
   scene.add(reticle);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 8));
