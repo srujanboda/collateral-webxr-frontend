@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 
 let camera, scene, renderer, reticle;
-let points = [], lines = [];
+let points = [], lines = [], labels = []; // Labels for distances
 let hitTestSource = null, session = null, referenceSpace = null;
 
 const info = document.getElementById('info');
@@ -22,10 +22,10 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Neon green ring (small, follows tap exactly)
+  // Small, bright ring (no lag)
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1 })
+    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
@@ -33,11 +33,12 @@ function init() {
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 5));
 
-  // Tap anywhere → ring to tap + place dot
+  button.onclick = startAR;
+
+  // Tap to place (exact position)
   renderer.domElement.addEventListener('touchend', onTap);
   renderer.domElement.addEventListener('click', onTap);
 
-  button.onclick = startAR;
   window.onresize = () => {
     camera.aspect = innerWidth/innerHeight;
     camera.updateProjectionMatrix();
@@ -51,7 +52,7 @@ async function startAR() {
   try {
     session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay', 'local-floor'],
+      optionalFeatures: ['dom-overlay', 'local-floor', 'bounded-depth'], // Better for angles
       domOverlay: { root: document.body }
     });
 
@@ -90,7 +91,7 @@ function onTap(e) {
 
   let position = new THREE.Vector3();
 
-  // Hit-test for exact tap position
+  // Hit-test for exact tap (any angle)
   if (hitTestSource) {
     const hits = frame.getHitTestResults(hitTestSource);
     if (hits.length > 0) {
@@ -99,14 +100,14 @@ function onTap(e) {
       reticle.matrix.fromArray(pose.transform.matrix);
       reticle.visible = true;
     } else {
-      // Fallback: Center screen, 60cm in front
+      // Fallback (no surface) – center screen, 60cm in front
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
       position = camera.position.clone().add(dir.multiplyScalar(0.6));
       reticle.visible = false;
     }
   } else {
-    // No hit-test: fallback
+    // No hit-test fallback
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
     position = camera.position.clone().add(dir.multiplyScalar(0.6));
@@ -121,14 +122,17 @@ function animate(time, frame) {
     if (hits.length > 0) {
       const pose = hits[0].getPose(referenceSpace);
       reticle.matrix.fromArray(pose.transform.matrix);
+      reticle.updateMatrixWorld(); // Smooth update
       reticle.visible = true;
+    } else {
+      reticle.visible = false;
     }
   }
   renderer.render(scene, camera);
 }
 
 function placePoint(pos) {
-  // Tiny bright dot
+  // Tiny dot
   const dot = new THREE.Mesh(
     new THREE.SphereGeometry(0.01, 24, 16),
     new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2 })
@@ -137,19 +141,46 @@ function placePoint(pos) {
   scene.add(dot);
   points.push(dot);
 
+  // Lines
   lines.forEach(l => scene.remove(l));
+  labels.forEach(l => scene.remove(l));
   lines = [];
+  labels = [];
   if (points.length > 1) {
     for (let i = 1; i < points.length; i++) {
-      const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
-        new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 })
-      );
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]);
+      const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 }));
       scene.add(line);
       lines.push(line);
+
+      // Distance label on line
+      const dist = points[i].position.distanceTo(points[i-1].position).toFixed(3);
+      const midPoint = new THREE.Vector3().lerpVectors(points[i-1].position, points[i].position, 0.5);
+      const label = createTextLabel(dist + ' m', midPoint);
+      scene.add(label);
+      labels.push(label);
     }
   }
   updateInfo();
+}
+
+// Create 3D text label for distance
+function createTextLabel(text, position) {
+  const loader = new THREE.FontLoader();
+  loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+    const textGeometry = new THREE.TextGeometry(text, {
+      font: font,
+      size: 0.05,
+      height: 0.01,
+      curveSegments: 2
+    });
+    const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.copy(position);
+    textMesh.lookAt(camera.position); // Face camera
+    scene.add(textMesh);
+  });
+  return null; // Placeholder – text loads async
 }
 
 function updateInfo() {
@@ -172,7 +203,8 @@ document.body.addEventListener('touchend', () => {
 function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
-  points = []; lines = [];
+  labels.forEach(l => scene.remove(l));
+  points = []; lines = []; labels = [];
   reticle.visible = false;
   if (session) info.textContent = 'Tap anywhere to place point';
 }
