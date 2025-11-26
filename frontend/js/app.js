@@ -5,10 +5,10 @@ let points = [], lines = [];
 let hitTestSource = null, session = null, referenceSpace = null;
 
 const info = document.getElementById('info');
-const button = document.getElementById('arButton');
+let button = document.getElementById('arButton'); // Fallback if ID fails
+if (!button) button = document.querySelector('button'); // Query fallback
 
 init();
-animate();
 
 function init() {
   scene = new THREE.Scene();
@@ -33,11 +33,16 @@ function init() {
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 8));
 
-  button.onclick = startAR;
+  // Button listener with fallback
+  if (button) {
+    button.addEventListener('click', startAR);
+  } else {
+    console.error('Button not found!');
+  }
 
-  // FIXED: Use session.inputSources for reliable tap detection in full-screen
-  window.addEventListener('touchstart', onTap, { passive: false });
-  window.addEventListener('click', onTap, { passive: false });
+  // Tap listeners
+  renderer.domElement.addEventListener('touchend', onTap);
+  renderer.domElement.addEventListener('click', onTap);
 
   window.onresize = () => {
     camera.aspect = innerWidth/innerHeight;
@@ -47,7 +52,13 @@ function init() {
 }
 
 async function startAR() {
+  console.log('Button clicked!'); // Debug
   if (session) { session.end(); return; }
+
+  if (!navigator.xr) {
+    info.textContent = 'WebXR not supported';
+    return;
+  }
 
   try {
     session = await navigator.xr.requestSession('immersive-ar', {
@@ -66,7 +77,7 @@ async function startAR() {
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    renderer.setAnimationLoop(animate);
+    renderer.setAnimationLoop(animate); // Force loop
 
     session.addEventListener('end', () => {
       renderer.setAnimationLoop(null);
@@ -78,7 +89,8 @@ async function startAR() {
     });
 
   } catch (e) {
-    info.textContent = 'AR not supported or denied';
+    console.error('AR Error:', e);
+    info.textContent = 'AR failed: ' + e.message;
   }
 }
 
