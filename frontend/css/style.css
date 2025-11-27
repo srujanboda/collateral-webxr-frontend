@@ -1,109 +1,89 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { 
   font-family: 'Inter', system-ui, sans-serif; 
-  background: #000; 
-  color: white; 
-  overflow: hidden; 
-  height: 100dvh;
+  background:#000; 
+  color:white; 
+  overflow:hidden; 
+  height:100dvh;
 }
 
-/* === LANDING PAGE === */
+/* LANDING PAGE */
 .landing {
-  min-height: 100dvh;
-  background: radial-gradient(ellipse at top left, #1a0033, #000);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 20px;
+  min-height:100dvh;
+  background:linear-gradient(135deg,#0c0c0c 0%,#1a1a2e 50%,#16213e 100%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  position:relative;
+}
+.landing::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(circle at 20% 80%,rgba(0,255,136,0.12),transparent 50%);
+  pointer-events:none;
 }
 
-.content h1 {
-  font-size: 56px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #00ff9d, #00ccff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 12px;
-}
+.container { max-width:420px; text-align:center; z-index:2; }
 
-.tagline {
-  font-size: 22px;
-  opacity: 0.95;
-  margin-bottom: 8px;
+h1 {
+  font-size:56px; font-weight:700;
+  background:linear-gradient(135deg,#00ff88,#00d4ff);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  margin-bottom:12px;
 }
-
-.sub {
-  font-size: 17px;
-  opacity: 0.7;
-  margin: 30px 0 50px;
-}
+.tagline { font-size:22px; opacity:0.95; margin-bottom:8px; }
+.sub { font-size:17px; opacity:0.75; margin:30px 0 40px; line-height:1.5; }
 
 .launch-btn {
-  background: linear-gradient(135deg, #00ff9d, #00ccff);
-  color: #000;
-  border: none;
-  padding: 20px 50px;
-  border-radius: 50px;
-  font-size: 20px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 15px 40px rgba(0, 255, 157, 0.4);
-  transition: all 0.3s ease;
+  background:linear-gradient(135deg,#00ff88,#00d4ff);
+  color:#000; border:none; padding:20px 50px;
+  border-radius:50px; font-size:20px; font-weight:600;
+  cursor:pointer; box-shadow:0 15px 40px rgba(0,255,136,0.35);
+  transition:all .3s ease;
 }
-
-.launch-btn:hover { transform: translateY(-5px); box-shadow: 0 25px 50px rgba(0, 255, 157, 0.5); }
+.launch-btn:hover { transform:translateY(-4px); box-shadow:0 25px 50px rgba(0,255,136,0.45); }
 
 .features {
-  margin-top: 60px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  font-size: 15px;
-  opacity: 0.8;
+  margin-top:60px; display:flex; flex-direction:column; gap:16px;
+}
+.feature {
+  background:rgba(255,255,255,0.05); padding:14px 20px;
+  border-radius:20px; font-size:15px; font-weight:500;
+  backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.1);
 }
 
-/* === AR MODE - SUPER MINIMAL === */
+/* AR OVERLAY - MINIMAL */
 .ar-overlay {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s ease;
+  position:absolute; inset:0; pointer-events:none;
+  opacity:0; transition:opacity .4s ease;
 }
-
-.ar-active .ar-overlay { opacity: 1; pointer-events: all; }
+.ar-active .ar-overlay { opacity:1; pointer-events:all; }
 
 .measurements {
-  position: absolute;
-  top: 30px; left: 20px; right: 20px;
-  background: rgba(0,0,0,0.7);
-  padding: 16px 20px;
-  border-radius: 20px;
-  font-size: 18px;
-  font-weight: 600;
-  text-align: center;
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.1);
-  pointer-events: none;
+  position:absolute; top:30px; left:20px; right:20px;
+  background:rgba(0.85); padding:16px 20px;
+  border-radius:20px; font-size:18px; font-weight:500;
+  text-align:center; backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.1);
+  pointer-events:none; line-height:1.4;
 }
 
 .stop-btn {
-  position: absolute;
-  bottom: 40px; left: 50%;
-  transform: translateX(-50%);
-  background: #ff3b30;
-  color: white;
-  border: none;
-  padding: 18px 50px;
-  border-radius: 50px;
-  font-size: 18px;
-  font-weight: 600;
-  box-shadow: 0 10px 30px rgba(255,59,48,0.5);
-  pointer-events: all;
-  z-index: 999;
+  position:absolute; bottom:40px; left:50%;
+  transform:translateX(-50%);
+  background:linear-gradient(135deg,#ff3b30,#ff6b6b);
+  color:white; border:none; padding:16px 50px;
+  border-radius:50px; font-size:18px; font-weight:600;
+  box-shadow:0 10px 30px rgba(255,59,48,0.4);
+  cursor:pointer; pointer-events:all; z-index:999;
 }
 
-/* Hide landing when AR is active */
-.ar-active .landing { opacity: 0; pointer-events: none; }
+/* Hide landing in AR */
+.ar-active .landing { opacity:0; pointer-events:none; }
+
+/* Mobile tweaks */
+@media (max-width:480px) {
+  h1 { font-size:48px; }
+  .launch-btn { padding:18px 40px; font-size:18px; }
+}
