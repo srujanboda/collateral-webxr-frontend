@@ -1,12 +1,11 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
 
-let camera, scene, renderer;
-let reticle;
-let hitTestSource = null;
-let hitTestSourceRequested = false;
+let camera, scene, renderer, reticle;
 let points = [], lines = [];
+let hitTestSource = null;
+let session = null;
 
-const info = document.getElementById('info');
+const info   = document.getElementById('info');
 const button = document.getElementById('arButton');
 
 init();
@@ -23,101 +22,87 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Bright green aiming ring
-  const geometry = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI / 2);
-  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-  reticle = new THREE.Mesh(geometry, material);
+  // Bright green reticle
+  const ringGeom = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI / 2);
+  reticle = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  // Lighting (helps dots be visible)
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
 
-  // Button
-  button.addEventListener('click', onButtonClick);
-
-  window.addEventListener('resize', onWindowResize);
+  button.addEventListener('click', startARSession);
+  window.addEventListener('resize', onResize);
 }
 
-function onButtonClick() {
-  if (button.textContent === 'STOP AR') {
-    renderer.xr.getSession()?.end();
-    return;
-  }
-
-  navigator.xr.requestSession('immersive-ar', {
-    requiredFeatures: ['hit-test'],
-    optionalFeatures: ['dom-overlay'],
-    domOverlay: { root: document.body }
-  }).then(onSessionStarted);
-}
-
-function onSessionStarted(session) {
-  button.textContent = 'STOP AR';
-  info.textContent = 'Tap to place points';
-
-  renderer.xr.setSession(session);
-
-  session.addEventListener('end', () => {
-    button.textContent = 'START AR';
-    info.textContent = 'Tap START AR to begin';
-    document.body.classList.remove('ar-active');
-    resetAll();
-  });
-
-  hitTestSourceRequested = true;
-  session.requestReferenceSpace('viewer').then(refSpace => {
-    session.requestHitTestSource({ space: refSpace }).then(source => {
-      hitTestSource = source;
-    });
-  });
-
-  document.body.classList.add('ar-active');
-}
-
-function onWindowResize() {
+function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+async function startARSession() {
+  if (session) {
+    session.end();
+    return;
+  }
+
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'local-floor'],
+      domOverlay: { root: document.body }
+    });
+
+    document.body.classList.add('ar-active');
+    button.textContent = 'STOP AR';
+    info.textContent = 'Tap anywhere to place points';
+
+    await renderer.xr.setSession(session);
+
+    const viewerSpace = await session.requestReferenceSpace('viewer');
+    hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+
+    session.addEventListener('end', () => {
+      session = null;
+      hitTestSource = null;
+      document.body.classList.remove('ar-active');
+      button.textContent = 'START AR';
+      info.textContent = 'Tap START AR to begin';
+      resetAll();
+    });
+
+  } catch (e) {
+    info.textContent = 'AR not supported on this device';
+    console.error(e);
+  }
+}
+
 function animate(time, frame) {
   renderer.setAnimationLoop(animate);
 
-  if (!frame) return;
+  if (!frame || !hitTestSource) return;
 
-  if (hitTestSourceRequested && !hitTestSource) {
-    frame.session.requestReferenceSpace('viewer').then(refSpace => {
-      frame.session.requestHitTestSource({ space: refSpace }).then(source => {
-        hitTestSource = source;
-      });
-    });
-    hitTestSourceRequested = false;
+  const results = frame.getHitTestResults(hitTestSource);
+  if (results.length > 0) {
+    const pose = results[0].getPose(renderer.xr.getReferenceSpace());
+    reticle.visible = true;
+    reticle.matrix.fromArray(pose.transform.matrix);
+  } else {
+    reticle.visible = false;
   }
 
-  if (hitTestSource) {
-    const hitTestResults = frame.getHitTestResults(hitTestSource);
-    if (hitTestResults.length) {
-      const hit = hitTestResults[0];
-      const pose = hit.getPose(renderer.xr.getReferenceSpace());
-      reticle.visible = true;
-      reticle.matrix.fromArray(pose.transform.matrix);
-    } else {
-      reticle.visible = false;
-    }
-  }
-
-  // Tap detection using controller select (works 100% in AR)
-  const session = renderer.xr.getSession();
-  if (session) {
-    for (const source of session.inputSources) {
-      if (source.gamepad?.buttons[0]?.pressed) {
+  // Reliable tap detection in full-screen AR
+  const xrSession = renderer.xr.getSession();
+  if (xrSession) {
+    for (const source of xrSession.inputSources) {
+      if (source.gamepad && source.gamepad.buttons[0].pressed) {
         if (reticle.visible) {
           const pos = new THREE.Vector3();
           pos.setFromMatrixPosition(reticle.matrix);
           placePoint(pos);
         }
+        break;
       }
     }
   }
@@ -125,21 +110,18 @@ function animate(time, frame) {
   renderer.render(scene, camera);
 }
 
-function placePoint(position) {
-  // Bright green dot (always visible)
+function placePoint(pos) {
   const dot = new THREE.Mesh(
     new THREE.SphereGeometry(0.01, 32, 16),
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
   );
-  dot.position.copy(position);
+  dot.position.copy(pos);
   scene.add(dot);
   points.push(dot);
 
-  // Remove old lines
+  // Redraw lines
   lines.forEach(l => scene.remove(l));
   lines = [];
-
-  // Draw new lines
   for (let i = 1; i < points.length; i++) {
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
@@ -154,27 +136,27 @@ function placePoint(position) {
 
 function updateInfo() {
   if (points.length < 2) {
-    info.innerHTML = `<strong>${points.length} point(s)</strong><br>Tap to add more`;
+    info.innerHTML = `<strong>${points.length} point(s)</strong>`;
     return;
   }
 
   let total = 0;
   let last = 0;
   for (let i = 1; i < points.length; i++) {
-    const dist = points[i].position.distanceTo(points[i-1].position);
-    if (i === points.length - 1) last = dist;
-    total += dist;
+    const d = points[i].position.distanceTo(points[i-1].position);
+    if (i === points.length - 1) last = d;
+    total += d;
   }
 
   info.innerHTML = `
     <strong>${points.length} points</strong><br>
     Total: <strong>${total.toFixed(3)} m</strong><br>
     Last: ${last.toFixed(3)} m<br>
-    <small>Double-tap screen to reset</small>
+    <small>Double-tap to reset</small>
   `;
 }
 
-// Double-tap to reset
+// Double-tap reset
 let lastTap = 0;
 document.body.addEventListener('touchend', () => {
   const now = Date.now();
@@ -185,7 +167,6 @@ document.body.addEventListener('touchend', () => {
 function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
-  points = [];
-  lines = [];
+  points = []; lines = [];
   updateInfo();
 }
