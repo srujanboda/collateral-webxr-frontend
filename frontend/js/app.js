@@ -22,7 +22,7 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Small bright ring for aiming
+  // Bright green ring
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.02, 0.03, 32).rotateX(-Math.PI/2),
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
@@ -35,7 +35,7 @@ function init() {
 
   button.onclick = startAR;
 
-  // Tap to place (reliable in full-screen)
+  // Tap to place
   renderer.domElement.addEventListener('touchend', onTap);
   renderer.domElement.addEventListener('click', onTap);
 
@@ -49,11 +49,6 @@ function init() {
 async function startAR() {
   console.log('START AR clicked!'); // Debug
   if (session) { session.end(); return; }
-
-  if (!navigator.xr) {
-    info.textContent = 'WebXR not supported';
-    return;
-  }
 
   try {
     session = await navigator.xr.requestSession('immersive-ar', {
@@ -101,13 +96,15 @@ function onTap(e) {
 
   if (hitTestSource) {
     const hits = frame.getHitTestResults(hitTestSource);
+    console.log('Hits found:', hits.length); // Debug
     if (hits.length > 0) {
       const pose = hits[0].getPose(referenceSpace);
       position.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
       reticle.matrix.fromArray(pose.transform.matrix);
+      reticle.updateMatrixWorld(); // Force update
       reticle.visible = true;
     } else {
-      // Fallback: 60cm in front
+      // Fallback
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
       position = camera.position.clone().add(dir.multiplyScalar(0.6));
@@ -129,6 +126,7 @@ function animate(time, frame) {
     if (hits.length > 0) {
       const pose = hits[0].getPose(referenceSpace);
       reticle.matrix.fromArray(pose.transform.matrix);
+      reticle.updateMatrixWorld();
       reticle.visible = true;
     }
   }
@@ -142,7 +140,7 @@ function placePoint(pos) {
     new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2 })
   );
   dot.position.copy(pos);
-  scene.add(dot);
+  scene.add(dot); // Explicit add
   points.push(dot);
 
   lines.forEach(l => scene.remove(l));
