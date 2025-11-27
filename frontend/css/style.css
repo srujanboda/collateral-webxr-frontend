@@ -1,13 +1,144 @@
-body { margin:0; overflow:hidden; background:#000; font-family:system-ui; }
-#info {
-  position:absolute; top:20px; left:20px; background:rgba(0,0,0,0.75);
-  color:white; padding:12px 18px; border-radius:16px; font-size:16px;
-  z-index:100; pointer-events:none; backdrop-filter:blur(10px);
+/* Reset & Base */
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #000;
+  color: white;
+  overflow: hidden;
+  height: 100dvh;
+  touch-action: manipulation;
 }
-#arButton {
-  position:absolute; bottom:40px; left:50%; transform:translateX(-50%);
-  padding:18px 60px; font-size:20px; font-weight:bold;
-  background:#007AFF; color:white; border:none; border-radius:30px;
-  z-index:999; box-shadow:0 10px 30px rgba(0,122,255,0.5);
+
+/* Hero Section */
+.hero {
+  min-height: 100dvh;
+  background: radial-gradient(circle at 30% 70%, #1a1a2e, #000);
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  position: relative;
 }
-.ar-active #arButton { background:#FF3B30; }
+
+.container {
+  max-width: 420px;
+  margin: 0 auto;
+  text-align: center;
+  z-index: 2;
+}
+
+h1 {
+  font-size: 48px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00ff88, #00d4ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 12px;
+  line-height: 1.1;
+}
+
+.subtitle {
+  font-size: 19px;
+  opacity: 0.9;
+  margin-bottom: 16px;
+}
+
+.desc {
+  font-size: 17px;
+  line-height: 1.6;
+  opacity: 0.8;
+  margin: 24px 0 40px;
+}
+
+/* Launch Button */
+.ar-button {
+  background: linear-gradient(135deg, #00ff88, #00d4ff);
+  color: black;
+  border: none;
+  padding: 18px 40px;
+  border-radius: 50px;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 255, 136, 0.4);
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 50px;
+}
+
+.ar-button:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 255, 136, 0.5);
+}
+
+.ar-button:active {
+  transform: translateY(-1px);
+}
+
+.btn-icon {
+  font-size: 24px;
+}
+
+/* Features */
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.feature {
+  background: rgba(255,255,255,0.08);
+  padding: 12px 20px;
+  border-radius: 16px;
+  font-size: 15px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* AR Info Panel (in-session overlay) */
+.info-panel {
+  position: absolute;
+  top: 20px; left: 20px; right: 20px;
+  background: rgba(0,0,0,0.75);
+  color: white;
+  padding: 16px 20px;
+  border-radius: 20px;
+  font-size: 17px;
+  font-weight: 500;
+  z-index: 100;
+  pointer-events: none;
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.1);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.ar-active .info-panel {
+  opacity: 1;
+}
+
+/* STOP AR Button Style */
+.ar-active .ar-button {
+  background: #ff3b30;
+  color: white;
+  box-shadow: 0 10px 30px rgba(255,59,48,0.5);
+}
+
+.ar-active .btn-text {
+  display: none;
+}
+
+.ar-active .btn-icon::before {
+  content: "Stop";
+}
+
+/* Mobile Optimization */
+@media (max-width: 480px) {
+  h1 { font-size: 40px; }
+  .subtitle { font-size: 18px; }
+  .desc { font-size: 16px; }
+  .ar-button { padding: 16px 36px; font-size: 19px; }
+}
