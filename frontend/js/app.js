@@ -5,10 +5,10 @@ let points = [], lines = [];
 let hitTestSource = null, session = null, referenceSpace = null;
 
 const info = document.getElementById('info');
-let button = document.getElementById('arButton'); // Fallback if ID fails
-if (!button) button = document.querySelector('button'); // Query fallback
+const button = document.getElementById('arButton');
 
 init();
+animate();
 
 function init() {
   scene = new THREE.Scene();
@@ -22,25 +22,20 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Bright green ring
+  // Small bright ring for aiming
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.02, 0.03, 32).rotateX(-Math.PI/2),
     new THREE.MeshBasicMaterial({ color: 0x00ff00 })
   );
   reticle.matrixAutoUpdate = false;
-  reticle.visible = true;
+  reticle.visible = false;
   scene.add(reticle);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 8));
 
-  // Button listener with fallback
-  if (button) {
-    button.addEventListener('click', startAR);
-  } else {
-    console.error('Button not found!');
-  }
+  button.onclick = startAR;
 
-  // Tap listeners
+  // Tap to place (reliable in full-screen)
   renderer.domElement.addEventListener('touchend', onTap);
   renderer.domElement.addEventListener('click', onTap);
 
@@ -52,7 +47,7 @@ function init() {
 }
 
 async function startAR() {
-  console.log('Button clicked!'); // Debug
+  console.log('START AR clicked!'); // Debug
   if (session) { session.end(); return; }
 
   if (!navigator.xr) {
@@ -77,7 +72,7 @@ async function startAR() {
     referenceSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: referenceSpace });
 
-    renderer.setAnimationLoop(animate); // Force loop
+    renderer.setAnimationLoop(animate);
 
     session.addEventListener('end', () => {
       renderer.setAnimationLoop(null);
@@ -112,7 +107,7 @@ function onTap(e) {
       reticle.matrix.fromArray(pose.transform.matrix);
       reticle.visible = true;
     } else {
-      // Fallback
+      // Fallback: 60cm in front
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
       position = camera.position.clone().add(dir.multiplyScalar(0.6));
