@@ -2,15 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>AR Measure</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AR Measure Pro</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="info">Tap START AR to begin</div>
-  <button id="arButton">START AR</button>
+  <!-- Hero Section -->
+  <div class="hero">
+    <div class="container">
+      <h1>AR Measure Pro</h1>
+      <p class="subtitle">Measure anything in real world using your phone camera</p>
+      <p class="desc">Point • Tap • Measure<br>Accurate distances in meters, instantly</p>
 
-  <!-- This path is correct for js/app.js inside /js folder -->
+      <button id="arButton" class="ar-button">
+        <span class="btn-text">Launch AR Measure</span>
+        <span class="btn-icon">Measure</span>
+      </button>
+
+      <div class="features">
+        <div class="feature">Real-time hit detection</div>
+        <div class="feature">Works on any surface</div>
+        <div class="feature">No app install needed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Overlay (shown in AR mode) -->
+  <div id="info" class="info-panel">Tap Launch AR Measure to begin</div>
+
+  <!-- Load the AR app -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
