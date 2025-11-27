@@ -1,14 +1,10 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
 
-let camera, scene, renderer, reticle;
-let points = [], lines = [];
-
+let camera, scene, renderer;
+let reticle;
 let hitTestSource = null;
-let latestXRFrame = null;
-let session = null;
-
-let viewerRefSpace = null;
-let localFloorRefSpace = null;
+let hitTestSourceRequested = false;
+let points = [], lines = [];
 
 const info = document.getElementById('info');
 const button = document.getElementById('arButton');
@@ -18,161 +14,124 @@ animate();
 
 function init() {
   scene = new THREE.Scene();
-  scene.background = null;
 
-  camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 20);
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(devicePixelRatio);
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Reticle
-  reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.02, 0.03, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-  );
+  // Bright green aiming ring
+  const geometry = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI / 2);
+  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  reticle = new THREE.Mesh(geometry, material);
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 8));
+  // Lighting (helps dots be visible)
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
 
-  button.onclick = startAR;
+  // Button
+  button.addEventListener('click', onButtonClick);
 
-  // FIX: attach events to window (canvas is replaced during AR)
-  window.addEventListener("touchend", onTap, false);
-  window.addEventListener("pointerdown", onTap, false);
-  window.addEventListener("click", onTap, false);
-
-  window.onresize = () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  };
+  window.addEventListener('resize', onWindowResize);
 }
 
-async function startAR() {
-  console.log("START AR clicked!");
-
-  if (session) {
-    session.end();
+function onButtonClick() {
+  if (button.textContent === 'STOP AR') {
+    renderer.xr.getSession()?.end();
     return;
   }
 
-  try {
-    session = await navigator.xr.requestSession("immersive-ar", {
-      requiredFeatures: ["hit-test"],
-      optionalFeatures: ["local-floor", "dom-overlay"],
-      domOverlay: { root: document.body }
-    });
-
-    renderer.xr.setReferenceSpaceType("local-floor");
-    await renderer.xr.setSession(session);
-
-    viewerRefSpace = await session.requestReferenceSpace("viewer");
-    localFloorRefSpace = await session.requestReferenceSpace("local-floor");
-
-    hitTestSource = await session.requestHitTestSource({ space: viewerRefSpace });
-
-    document.body.classList.add("ar-active");
-    button.textContent = "STOP AR";
-    info.textContent = "Tap anywhere to place point";
-
-    renderer.setAnimationLoop(animate);
-
-    session.addEventListener("end", () => {
-      renderer.setAnimationLoop(null);
-      resetAll();
-
-      hitTestSource = null;
-      latestXRFrame = null;
-      session = null;
-
-      document.body.classList.remove("ar-active");
-      button.textContent = "START AR";
-      info.textContent = "Tap START AR to begin";
-    });
-
-  } catch (e) {
-    console.error("AR Error:", e);
-    info.textContent = "AR failed: " + e.message;
-  }
+  navigator.xr.requestSession('immersive-ar', {
+    requiredFeatures: ['hit-test'],
+    optionalFeatures: ['dom-overlay'],
+    domOverlay: { root: document.body }
+  }).then(onSessionStarted);
 }
 
-// MAIN RENDER LOOP — stores latest XRFrame
-function animate(time, xrFrame) {
-  if (xrFrame) latestXRFrame = xrFrame;
+function onSessionStarted(session) {
+  button.textContent = 'STOP AR';
+  info.textContent = 'Tap to place points';
 
-  if (xrFrame && hitTestSource && localFloorRefSpace) {
-    const hits = xrFrame.getHitTestResults(hitTestSource);
+  renderer.xr.setSession(session);
 
-    if (hits.length > 0) {
-      const pose = hits[0].getPose(localFloorRefSpace);
+  session.addEventListener('end', () => {
+    button.textContent = 'START AR';
+    info.textContent = 'Tap START AR to begin';
+    document.body.classList.remove('ar-active');
+    resetAll();
+  });
 
-      if (pose) {
-        reticle.matrix.fromArray(pose.transform.matrix);
-        reticle.visible = true;
-      }
+  hitTestSourceRequested = true;
+  session.requestReferenceSpace('viewer').then(refSpace => {
+    session.requestHitTestSource({ space: refSpace }).then(source => {
+      hitTestSource = source;
+    });
+  });
+
+  document.body.classList.add('ar-active');
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate(time, frame) {
+  renderer.setAnimationLoop(animate);
+
+  if (!frame) return;
+
+  if (hitTestSourceRequested && !hitTestSource) {
+    frame.session.requestReferenceSpace('viewer').then(refSpace => {
+      frame.session.requestHitTestSource({ space: refSpace }).then(source => {
+        hitTestSource = source;
+      });
+    });
+    hitTestSourceRequested = false;
+  }
+
+  if (hitTestSource) {
+    const hitTestResults = frame.getHitTestResults(hitTestSource);
+    if (hitTestResults.length) {
+      const hit = hitTestResults[0];
+      const pose = hit.getPose(renderer.xr.getReferenceSpace());
+      reticle.visible = true;
+      reticle.matrix.fromArray(pose.transform.matrix);
     } else {
       reticle.visible = false;
+    }
+  }
+
+  // Tap detection using controller select (works 100% in AR)
+  const session = renderer.xr.getSession();
+  if (session) {
+    for (const source of session.inputSources) {
+      if (source.gamepad?.buttons[0]?.pressed) {
+        if (reticle.visible) {
+          const pos = new THREE.Vector3();
+          pos.setFromMatrixPosition(reticle.matrix);
+          placePoint(pos);
+        }
+      }
     }
   }
 
   renderer.render(scene, camera);
 }
 
-function onTap(e) {
-  e.preventDefault();
-
-  if (!session) return;
-
-  const frame = latestXRFrame;
-  if (!frame) {
-    console.warn("No XRFrame yet");
-    return;
-  }
-
-  let position = new THREE.Vector3();
-
-  if (hitTestSource && localFloorRefSpace) {
-    const hits = frame.getHitTestResults(hitTestSource);
-
-    if (hits.length > 0) {
-      const pose = hits[0].getPose(localFloorRefSpace);
-
-      if (pose) {
-        position.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
-
-        reticle.matrix.fromArray(pose.transform.matrix);
-        reticle.visible = true;
-      }
-    } else {
-      // fallback
-      let dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
-      position = camera.position.clone().add(dir.multiplyScalar(0.6));
-      reticle.visible = false;
-    }
-  }
-
-  placePoint(position);
-}
-
-function placePoint(pos) {
-  console.log("Placing dot at:", pos);
-
+function placePoint(position) {
+  // Bright green dot (always visible)
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.01, 24, 16),
-    new THREE.MeshStandardMaterial({
-      color: 0x00ff00,
-      emissive: 0x00ff00,
-      emissiveIntensity: 2
-    })
+    new THREE.SphereGeometry(0.01, 32, 16),
+    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
   );
-
-  dot.position.copy(pos);
+  dot.position.copy(position);
   scene.add(dot);
   points.push(dot);
 
@@ -181,46 +140,43 @@ function placePoint(pos) {
   lines = [];
 
   // Draw new lines
-  if (points.length > 1) {
-    for (let i = 1; i < points.length; i++) {
-      const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          points[i-1].position,
-          points[i].position
-        ]),
-        new THREE.LineBasicMaterial({ color: 0xffff00 })
-      );
-      scene.add(line);
-      lines.push(line);
-    }
+  for (let i = 1; i < points.length; i++) {
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
+      new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 })
+    );
+    scene.add(line);
+    lines.push(line);
   }
 
   updateInfo();
 }
 
 function updateInfo() {
-  if (!points.length) return;
-
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    total += points[i].position.distanceTo(points[i-1].position);
+  if (points.length < 2) {
+    info.innerHTML = `<strong>${points.length} point(s)</strong><br>Tap to add more`;
+    return;
   }
 
-  const last = points.length > 1
-    ? points[points.length - 1].position.distanceTo(points[points.length - 2].position).toFixed(3)
-    : "0.000";
+  let total = 0;
+  let last = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dist = points[i].position.distanceTo(points[i-1].position);
+    if (i === points.length - 1) last = dist;
+    total += dist;
+  }
 
   info.innerHTML = `
-    <strong>${points.length} pts</strong><br>
+    <strong>${points.length} points</strong><br>
     Total: <strong>${total.toFixed(3)} m</strong><br>
-    Last: ${last} m<br>
-    <small>Double-tap to reset</small>
+    Last: ${last.toFixed(3)} m<br>
+    <small>Double-tap screen to reset</small>
   `;
 }
 
-// Double tap reset
+// Double-tap to reset
 let lastTap = 0;
-document.body.addEventListener("touchend", () => {
+document.body.addEventListener('touchend', () => {
   const now = Date.now();
   if (now - lastTap < 400) resetAll();
   lastTap = now;
@@ -229,11 +185,7 @@ document.body.addEventListener("touchend", () => {
 function resetAll() {
   points.forEach(p => scene.remove(p));
   lines.forEach(l => scene.remove(l));
-
   points = [];
   lines = [];
-
-  reticle.visible = false;
-
-  if (session) info.textContent = "Tap anywhere to place point";
+  updateInfo();
 }
