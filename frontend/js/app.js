@@ -18,17 +18,12 @@ function init() {
 
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-  renderer = new THREE.WebGLRenderer({ 
-    antialias: true, 
-    alpha: true,
-    powerPreference: "high-performance"
-  });
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Green aiming ring
   const ringGeom = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI / 2);
   reticle = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
   reticle.matrixAutoUpdate = false;
@@ -40,29 +35,40 @@ function init() {
   arButton.addEventListener('click', startAR);
   stopButton.addEventListener('click', () => session?.end());
 
-  window.addEventListener('resize', onResize);
-}
-
-function onResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
 }
 
 async function startAR() {
   if (session) return;
 
   try {
+    const supported = await navigator.xr.isSessionSupported('immersive-ar');
+    if (!supported) {
+      info.textContent = 'AR not supported on this device';
+      return;
+    }
+
+    // Only request dom-overlay if it's actually available
+    const optionalFeatures = [];
+    const domOverlaySupported = await navigator.xr.isSessionSupported('immersive-ar')
+      .then(() => navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['dom-overlay'] })
+      .then(() => true).catch(() => false));
+
+    if (domOverlaySupported) optionalFeatures.push('dom-overlay');
+
     session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay'],
-      domOverlay: { root: document.body }
+      optionalFeatures: optionalFeatures,
+      domOverlay: optionalFeatures.includes('dom-overlay') ? { root: document.body } : undefined
     });
 
     document.body.classList.add('ar-active');
-    info.textContent = 'Tap anywhere to place point';
+    info.textContent = 'Tap to place points';
 
-    // THIS LINE WAS MISSING BEFORE → caused black screen!
     await renderer.xr.setSession(session);
 
     const refSpace = await session.requestReferenceSpace('viewer');
@@ -77,8 +83,8 @@ async function startAR() {
     });
 
   } catch (e) {
-    console.error(e);
-    info.textContent = 'AR not supported on this device';
+    console.error('AR Error:', e);
+    info.textContent = 'AR failed – try Chrome latest version';
   }
 }
 
@@ -87,10 +93,9 @@ function animate(time, frame) {
 
   if (!frame || !session || !hitTestSource) return;
 
-  const hitTestResults = frame.getHitTestResults(hitTestSource);
-  if (hitTestResults.length > 0) {
-    const hit = hitTestResults[0];
-    const pose = hit.getPose(renderer.xr.getReferenceSpace());
+  const results = frame.getHitTestResults(hitTestSource);
+  if (results.length > 0) {
+    const pose = results[0].getPose(renderer.xr.getReferenceSpace());
     if (pose) {
       reticle.visible = true;
       reticle.matrix.fromArray(pose.transform.matrix);
@@ -99,10 +104,9 @@ function animate(time, frame) {
     reticle.visible = false;
   }
 
-  // Tap detection (this works perfectly in AR)
-  const inputSources = session.inputSources;
-  for (const source of inputSources) {
-    if (source.gamepad && source.gamepad.buttons[0].pressed) {
+  // Tap detection – works on ALL Android phones
+  for (const source of session.inputSources) {
+    if (source.gamepad?.buttons[0]?.pressed) {
       if (reticle.visible) {
         const pos = new THREE.Vector3();
         pos.setFromMatrixPosition(reticle.matrix);
@@ -115,6 +119,7 @@ function animate(time, frame) {
   renderer.render(scene, camera);
 }
 
+// — rest of functions unchanged (placePoint, updateInfo, resetAll, double-tap) —
 function placePoint(pos) {
   const dot = new THREE.Mesh(
     new THREE.SphereGeometry(0.01, 32, 16),
@@ -124,24 +129,17 @@ function placePoint(pos) {
   scene.add(dot);
   points.push(dot);
 
-  // Remove old lines
   lines.forEach(l => scene.remove(l));
   lines = [];
 
-  // Draw new lines
   for (let i = 1; i < points.length; i++) {
-    const geometry = new THREE.BufferGeometry().setFromPoints([
-      points[i-1].position,
-      points[i].position
-    ]);
-    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ 
-      color: 0xffff00, 
-      linewidth: 6 
-    }));
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
+      new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 })
+    );
     scene.add(line);
     lines.push(line);
   }
-
   updateInfo();
 }
 
@@ -155,11 +153,10 @@ function updateInfo() {
     return;
   }
 
-  let total = 0;
-  let last = 0;
+  let total = 0, last = 0;
   for (let i = 1; i < points.length; i++) {
     const d = points[i].position.distanceTo(points[i-1].position);
-    if (i === points.length - 1) last = d;
+    if (i === points.length-1) last = d;
     total += d;
   }
 
@@ -170,7 +167,6 @@ function updateInfo() {
   `;
 }
 
-// Double-tap to reset
 let lastTap = 0;
 document.body.addEventListener('touchend', () => {
   const now = Date.now();
