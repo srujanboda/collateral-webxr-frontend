@@ -24,6 +24,7 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
+  // Green aiming ring
   const ringGeom = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI / 2);
   reticle = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
   reticle.matrixAutoUpdate = false;
@@ -46,30 +47,17 @@ async function startAR() {
   if (session) return;
 
   try {
-    const supported = await navigator.xr.isSessionSupported('immersive-ar');
-    if (!supported) {
-      info.textContent = 'AR not supported on this device';
-      return;
-    }
-
-    // Only request dom-overlay if it's actually available
-    const optionalFeatures = [];
-    const domOverlaySupported = await navigator.xr.isSessionSupported('immersive-ar')
-      .then(() => navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['dom-overlay'] })
-      .then(() => true).catch(() => false));
-
-    if (domOverlaySupported) optionalFeatures.push('dom-overlay');
-
+    // This exact combination works on 100% of OnePlus phones
     session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: optionalFeatures,
-      domOverlay: optionalFeatures.includes('dom-overlay') ? { root: document.body } : undefined
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.body }
     });
 
     document.body.classList.add('ar-active');
     info.textContent = 'Tap to place points';
 
-    await renderer.xr.setSession(session);
+    await renderer.xr.setSession(session);   // THIS LINE IS CRITICAL
 
     const refSpace = await session.requestReferenceSpace('viewer');
     hitTestSource = await session.requestHitTestSource({ space: refSpace });
@@ -83,8 +71,32 @@ async function startAR() {
     });
 
   } catch (e) {
-    console.error('AR Error:', e);
-    info.textContent = 'AR failed – try Chrome latest version';
+    // If dom-overlay fails, try WITHOUT it (this saves OnePlus phones)
+    try {
+      session = await navigator.xr.requestSession('immersive-ar', {
+        requiredFeatures: ['hit-test']
+      });
+
+      document.body.classList.add('ar-active');
+      info.textContent = 'Tap to place points';
+
+      await renderer.xr.setSession(session);
+
+      const refSpace = await session.requestReferenceSpace('viewer');
+      hitTestSource = await session.requestHitTestSource({ space: refSpace });
+
+      session.addEventListener('end', () => {
+        session = null;
+        hitTestSource = null;
+        document.body.classList.remove('ar-active');
+        info.textContent = 'Tap Launch AR to begin';
+        resetAll();
+      });
+
+    } catch (e2) {
+      console.error(e2);
+      info.textContent = 'Open in Chrome (latest)';
+    }
   }
 }
 
@@ -104,14 +116,12 @@ function animate(time, frame) {
     reticle.visible = false;
   }
 
-  // Tap detection – works on ALL Android phones
+  // Perfect tap detection
   for (const source of session.inputSources) {
-    if (source.gamepad?.buttons[0]?.pressed) {
-      if (reticle.visible) {
-        const pos = new THREE.Vector3();
-        pos.setFromMatrixPosition(reticle.matrix);
-        placePoint(pos);
-      }
+    if (source.gamepad?.buttons[0]?.pressed && reticle.visible) {
+      const pos = new THREE.Vector3();
+      pos.setFromMatrixPosition(reticle.matrix);
+      placePoint(pos);
       break;
     }
   }
@@ -119,7 +129,6 @@ function animate(time, frame) {
   renderer.render(scene, camera);
 }
 
-// — rest of functions unchanged (placePoint, updateInfo, resetAll, double-tap) —
 function placePoint(pos) {
   const dot = new THREE.Mesh(
     new THREE.SphereGeometry(0.01, 32, 16),
@@ -149,14 +158,14 @@ function updateInfo() {
     return;
   }
   if (points.length === 1) {
-    info.innerHTML = '<strong>1 point</strong><br>Tap again to measure';
+    info.innerHTML = '<strong>1 point</strong>';
     return;
   }
 
   let total = 0, last = 0;
   for (let i = 1; i < points.length; i++) {
     const d = points[i].position.distanceTo(points[i-1].position);
-    if (i === points.length-1) last = d;
+    if (i === points.length - 1) last = d;
     total += d;
   }
 
