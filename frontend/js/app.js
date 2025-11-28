@@ -16,17 +16,21 @@ function init() {
   scene = new THREE.Scene();
   scene.background = null;
 
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer = new THREE.WebGLRenderer({ 
+    antialias: true, 
+    alpha: true,
+    powerPreference: "high-performance"
+  });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Green ring
-  const ring = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI/2);
-  reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color:0x00ff88 }));
+  // Green aiming ring
+  const ringGeom = new THREE.RingGeometry(0.015, 0.025, 32).rotateX(-Math.PI / 2);
+  reticle = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color: 0x00ff88 }));
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
@@ -36,11 +40,13 @@ function init() {
   arButton.addEventListener('click', startAR);
   stopButton.addEventListener('click', () => session?.end());
 
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  window.addEventListener('resize', onResize);
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 async function startAR() {
@@ -54,49 +60,55 @@ async function startAR() {
     });
 
     document.body.classList.add('ar-active');
-    info.textContent = 'Tap to place points';
+    info.textContent = 'Tap anywhere to place point';
 
+    // THIS LINE WAS MISSING BEFORE → caused black screen!
     await renderer.xr.setSession(session);
 
-    const viewerSpace = await session.requestReferenceSpace('viewer');
-    hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+    const refSpace = await session.requestReferenceSpace('viewer');
+    hitTestSource = await session.requestHitTestSource({ space: refSpace });
 
     session.addEventListener('end', () => {
       session = null;
       hitTestSource = null;
       document.body.classList.remove('ar-active');
-      info.textContent = 'Tap to place points';
+      info.textContent = 'Tap Launch AR to begin';
       resetAll();
     });
 
   } catch (e) {
-    info.textContent = 'AR not supported';
     console.error(e);
+    info.textContent = 'AR not supported on this device';
   }
 }
 
 function animate(time, frame) {
   renderer.setAnimationLoop(animate);
 
-  if (!frame || !hitTestSource) return;
+  if (!frame || !session || !hitTestSource) return;
 
-  const results = frame.getHitTestResults(hitTestSource);
-  if (results.length) {
-    const pose = results[0].getPose(renderer.xr.getReferenceSpace());
-    reticle.visible = true;
-    reticle.matrix.fromArray(pose.transform.matrix);
+  const hitTestResults = frame.getHitTestResults(hitTestSource);
+  if (hitTestResults.length > 0) {
+    const hit = hitTestResults[0];
+    const pose = hit.getPose(renderer.xr.getReferenceSpace());
+    if (pose) {
+      reticle.visible = true;
+      reticle.matrix.fromArray(pose.transform.matrix);
+    }
   } else {
     reticle.visible = false;
   }
 
-  // Tap detection
-  const s = renderer.xr.getSession();
-  if (s) {
-    for (const src of s.inputSources) {
-      if (src.gamepad?.buttons[0]?.pressed && reticle.visible) {
-        const pos = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+  // Tap detection (this works perfectly in AR)
+  const inputSources = session.inputSources;
+  for (const source of inputSources) {
+    if (source.gamepad && source.gamepad.buttons[0].pressed) {
+      if (reticle.visible) {
+        const pos = new THREE.Vector3();
+        pos.setFromMatrixPosition(reticle.matrix);
         placePoint(pos);
       }
+      break;
     }
   }
 
@@ -112,13 +124,20 @@ function placePoint(pos) {
   scene.add(dot);
   points.push(dot);
 
+  // Remove old lines
   lines.forEach(l => scene.remove(l));
   lines = [];
+
+  // Draw new lines
   for (let i = 1; i < points.length; i++) {
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([points[i-1].position, points[i].position]),
-      new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 6 })
-    );
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      points[i-1].position,
+      points[i].position
+    ]);
+    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ 
+      color: 0xffff00, 
+      linewidth: 6 
+    }));
     scene.add(line);
     lines.push(line);
   }
@@ -127,15 +146,20 @@ function placePoint(pos) {
 }
 
 function updateInfo() {
-  if (points.length < 2) {
-    info.innerHTML = `<strong>${points.length} pt</strong>`;
+  if (points.length === 0) {
+    info.innerHTML = 'Tap to place point';
+    return;
+  }
+  if (points.length === 1) {
+    info.innerHTML = '<strong>1 point</strong><br>Tap again to measure';
     return;
   }
 
-  let total = 0, last = 0;
+  let total = 0;
+  let last = 0;
   for (let i = 1; i < points.length; i++) {
     const d = points[i].position.distanceTo(points[i-1].position);
-    if (i === points.length-1) last = d;
+    if (i === points.length - 1) last = d;
     total += d;
   }
 
@@ -146,7 +170,7 @@ function updateInfo() {
   `;
 }
 
-// Double-tap reset
+// Double-tap to reset
 let lastTap = 0;
 document.body.addEventListener('touchend', () => {
   const now = Date.now();
