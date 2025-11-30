@@ -18,7 +18,7 @@
       justify-content: center;
       flex-direction: column;
       gap: 20px;
-      position: relative; /* For absolute fallback */
+      position: relative;
     }
     #arButton {
       background: linear-gradient(135deg, #00bfff, #1e3a8a);
@@ -32,7 +32,7 @@
       box-shadow: 0 0 20px rgba(0, 191, 255, 0.5), 0 10px 30px rgba(30, 58, 138, 0.3);
       transition: all 0.3s ease;
       animation: bluePulse 2s infinite;
-      display: block !important; /* Force visibility */
+      display: block !important;
       position: relative; z-index: 10;
     }
     #arButton:hover, #arButton:active { 
@@ -63,16 +63,15 @@
       box-shadow: 0 10px 30px rgba(255, 59, 48, 0.3);
       transition: all 0.3s ease;
       display: none;
-      position: relative; z-index: 10;
+      position: absolute; top: 20px; right: 20px; z-index: 10; /* Position top-right for visibility */
     }
     #stopButton:hover { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(255, 59, 48, 0.4); }
-    /* AR Active */
     .ar-active #arButton { display: none !important; }
     .ar-active #stopButton { display: block; }
     .ar-active #info { 
       opacity: 1; 
       position: absolute; 
-      top: 20px; 
+      top: 70px; /* Below stop button */
       left: 20px; 
       right: 20px; 
       background: rgba(0,0,0,0.7); 
@@ -80,20 +79,14 @@
       border-radius: 10px; 
       text-align: center;
     }
-    /* Fallback 2D */
     .measurement-active #videoFeed, .measurement-active #overlay { 
       position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
     }
     .measurement-active #arButton, .measurement-active #info { display: none; }
     .measurement-active #resetBtn { display: block; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); }
-    /* Mobile */
     @media (max-width: 480px) {
-      #arButton { font-size: 20px; padding: 18px 30px; min-height: 60px; } /* Ensure height */
+      #arButton { font-size: 20px; padding: 18px 30px; min-height: 60px; }
       #info { font-size: 16px; }
-    }
-    /* Absolute Fallback for Button (if flex fails) */
-    #arButton.absolute-fallback {
-      position: absolute !important; top: 50%; left: 50%; transform: translate(-50%, -50%);
     }
   </style>
 </head>
@@ -103,12 +96,11 @@
   <button id="stopButton">Stop AR</button>
   <button id="resetBtn" style="display: none;">Reset</button>
 
-  <!-- Fallback Elements -->
   <video id="videoFeed" style="display: none;" autoplay playsinline></video>
   <canvas id="overlay" style="display: none;"></canvas>
 
   <script>
-    console.log("Inline script starting...");
+    console.log("Script loaded on OnePlus");
     const info = document.getElementById("info");
     const arButton = document.getElementById("arButton");
     const stopButton = document.getElementById("stopButton");
@@ -116,28 +108,25 @@
     const videoFeed = document.getElementById("videoFeed");
     const overlay = document.getElementById("overlay");
 
-    // Force button visible
     arButton.style.display = "block";
-    arButton.classList.add("absolute-fallback"); // Temp for testing; remove if flex works
 
     async function supportsWebXR() {
       if (!window.THREE || !navigator.xr) return false;
       try {
         return await navigator.xr.isSessionSupported("immersive-ar");
       } catch (e) {
-        console.warn("WebXR check failed:", e);
+        console.warn("WebXR support check:", e);
         return false;
       }
     }
 
-    // AR Setup (non-module)
     let scene, camera, renderer, reticle, hitTestSource, session;
     let points = [], lines = [];
-    let frameCount = 0, fallbackTimeout;
+    let frameCount = 0, textureCheck = 0, fallbackTimeout;
 
     function initAR() {
       if (typeof THREE === "undefined") {
-        info.textContent = "Three.js failed to load—check connection";
+        info.textContent = "Error loading 3D library—retry";
         return;
       }
       scene = new THREE.Scene();
@@ -151,7 +140,6 @@
       renderer.setClearColor(0x000000, 0);
       document.body.appendChild(renderer.domElement);
 
-      // Blue reticle
       const ringGeom = new THREE.RingGeometry(0.015, 0.025, 32);
       ringGeom.rotateX(-Math.PI / 2);
       reticle = new THREE.Mesh(ringGeom, new THREE.MeshBasicMaterial({ color: 0x00bfff }));
@@ -167,14 +155,15 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
 
-      console.log("AR init complete");
+      console.log("AR initialized");
     }
 
     async function startAR() {
       if (session) return;
       arButton.disabled = true;
-      info.textContent = "Launching AR—scan surface...";
+      info.textContent = "Starting AR—move slowly to scan...";
       document.body.classList.add("ar-active");
+      frameCount = 0; textureCheck = 0;
 
       try {
         session = await navigator.xr.requestSession("immersive-ar", {
@@ -187,16 +176,16 @@
         session.addEventListener("end", onSessionEnd);
 
         const viewerSpace = await session.requestReferenceSpace("viewer");
+        const localSpace = await session.requestReferenceSpace("local"); // Added for better pose
         hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
 
         info.textContent = "Point at surface—tap blue ring to measure";
-        console.log("AR session started");
-        fallbackTimeout = setTimeout(checkFallback, 2000);
-
+        console.log("AR session active on OnePlus");
         renderer.setAnimationLoop(animate);
+        fallbackTimeout = setTimeout(checkFallback, 1500); // Faster detect
       } catch (e) {
-        console.warn("AR start failed:", e);
-        info.textContent = "AR unavailable—starting camera mode";
+        console.warn("AR launch error:", e);
+        info.textContent = "AR failed—switching to camera";
         startFallback();
       }
       arButton.disabled = false;
@@ -213,9 +202,15 @@
       frameCount++;
       if (!frame || !session || !hitTestSource) return;
 
+      // Enhanced texture check: Log if no baseLayer
+      if (session.renderState.baseLayer && !textureCheck) {
+        textureCheck = 1; // Flag success
+        console.log("Video texture bound");
+      }
+
       const hitTestResults = frame.getHitTestResults(hitTestSource);
       if (hitTestResults.length) {
-        const pose = hitTestResults[0].getPose(renderer.xr.getReferenceSpace());
+        const pose = hitTestResults[0].getPose(renderer.xr.getReferenceSpace() || localSpace);
         if (pose) {
           reticle.visible = true;
           reticle.matrix.fromArray(pose.transform.matrix);
@@ -266,7 +261,7 @@
       hitTestSource?.release();
       document.body.classList.remove("ar-active");
       if (fallbackTimeout) clearTimeout(fallbackTimeout);
-      info.textContent = "AR ended—tap Start to retry";
+      info.textContent = "AR stopped—tap Start to retry";
       resetAll();
       renderer.setAnimationLoop(null);
     }
@@ -279,14 +274,13 @@
     }
 
     function checkFallback() {
-      if (frameCount < 30) {
-        console.warn("Fallback to 2D");
+      if (frameCount < 20 || !textureCheck) { // Stricter: <20 frames or no texture
+        console.warn("Black screen detected—fallback to 2D on OnePlus");
         session?.end();
         startFallback();
       }
     }
 
-    // 2D Fallback
     async function startFallback() {
       document.body.classList.add("measurement-active");
       resetBtn.style.display = "block";
@@ -301,11 +295,12 @@
           overlay.height = videoFeed.videoHeight;
           overlay.style.pointerEvents = "auto";
           videoFeed.style.display = "block";
-          info.textContent = "Tap screen to place points (2D mode)";
+          info.textContent = "Camera active (2D mode)—tap to place points";
           draw2D();
         };
       } catch (err) {
-        info.textContent = "Camera access denied";
+        info.textContent = "Camera denied—check permissions";
+        console.error("Fallback camera error:", err);
       }
     }
 
@@ -345,7 +340,7 @@
       for (let i = 1; i < points2D.length; i++) {
         const dx = points2D[i].x - points2D[i-1].x;
         const dy = points2D[i].y - points2D[i-1].y;
-        total += Math.hypot(dx, dy) * 0.0011;
+        total += Math.hypot(dx, dy) * 0.0011; // Adjust for OnePlus camera
       }
       info.textContent = points2D.length < 2 
         ? `Points: ${points2D.length} — Tap to add`
@@ -356,10 +351,9 @@
     overlay.addEventListener("click", onTap2D);
     resetBtn.onclick = () => { points2D = []; draw2D(); info.textContent = "Reset—tap to measure"; };
 
-    // Init
     (async () => {
-      console.log("Detection starting...");
-      info.textContent = "Detecting AR...";
+      console.log("OnePlus detection...");
+      info.textContent = "Checking AR...";
       const xrSupported = await supportsWebXR();
       arButton.disabled = false;
       if (xrSupported) {
