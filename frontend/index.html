@@ -5,29 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
   <title>AR Measure</title>
   <link rel="stylesheet" href="css/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+  <button id="arButton" class="start-btn">Start AR</button>
+  <div id="info" class="info">Tap to launch AR measurement</div>
+  <button id="stopButton" class="stop-btn" style="display: none;">Stop AR</button>
 
-  <div id="landing" class="landing">
-    <div class="container">
-      <h1>AR Measure</h1>
-      <p class="tagline">Measure anything, anywhere</p>
-      <p class="sub">Point your phone. Tap to place. Get instant distances.</p>
-      <button id="arButton" class="launch-btn">Launch AR</button>
-      <div class="features">
-        <div class="feature">Accurate to mm</div>
-        <div class="feature">Works on any surface</div>
-        <div class="feature">No app install</div>
-      </div>
-    </div>
-  </div>
+  <!-- Hidden elements for fallback -->
+  <video id="videoFeed" style="display: none;"></video>
+  <canvas id="overlay" style="display: none;"></canvas>
+  <button id="resetBtn" class="stop-btn" style="display: none;">Reset</button>
 
-  <div id="arOverlay" class="ar-overlay">
-    <div id="info" class="measurements">Tap to place points</div>
-    <button id="stopButton" class="stop-btn">STOP AR</button>
-  </div>
-
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
