@@ -1,4 +1,9 @@
-console.log("main.js: Starting...");
+console.log("main.js: Initializing AR detector...");
+const info = document.getElementById("info");
+const arButton = document.getElementById("arButton");
+const stopButton = document.getElementById("stopButton");
+const resetBtn = document.getElementById("resetBtn");
+
 async function supportsWebXR() {
   if (!navigator.xr) return false;
   try {
@@ -7,33 +12,25 @@ async function supportsWebXR() {
     return false;
   }
 }
+
 (async () => {
-  const info = document.getElementById("info");
-  const startBtn = document.getElementById("startBtn");
-  const resetBtn = document.getElementById("resetBtn");
-  info.textContent = "Detecting device...";
-  startBtn.disabled = true;
+  info.textContent = "Detecting AR support...";
+  arButton.disabled = true;
   const xrSupported = await supportsWebXR();
+  arButton.disabled = false;
+
   if (xrSupported) {
-    info.textContent = "AR Mode Ready! Tap to start";
-    startBtn.textContent = "Start AR Measurement";
-    document.getElementById('startBtn').style.display = 'none';  // ← HIDE default button
-    await import("./app.js");
-    startBtn.onclick = async () => {
-      startBtn.style.display = 'none'; // Hide immediately
-      await import("./app.js");
-      // Optionally show resetBtn if needed in AR
-      resetBtn.style.display = 'block';
-    };
+    info.textContent = "AR ready—tap to start measuring";
+    arButton.textContent = "Start AR";
+    await import("./app.js");  // Load AR module
   } else {
-    info.textContent = "2D Camera Mode";
-    startBtn.textContent = "Start Camera";
-    startBtn.onclick = async () => {
-      startBtn.style.display = 'none'; // Hide immediately
-      info.textContent = "Switching to 2D Camera";
+    info.textContent = "AR unavailable—using camera mode";
+    arButton.textContent = "Start Camera Measure";
+    arButton.onclick = async () => {
+      arButton.style.display = 'none';
+      info.textContent = "Loading camera...";
       await import("./opencvMeasure.js");
       resetBtn.style.display = 'block';
     };
   }
-  startBtn.disabled = false;
 })();
