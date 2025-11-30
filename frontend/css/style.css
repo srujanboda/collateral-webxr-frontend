@@ -13,25 +13,25 @@ body {
 }
 
 .start-btn {
-  background: linear-gradient(135deg, #00ff88, #00d4ff);
-  color: #000; 
+  background: linear-gradient(135deg, #00bfff, #1e3a8a);
+  color: #fff; 
   border: none; 
   padding: 20px 40px;
   border-radius: 50px; 
   font-size: 24px; 
   font-weight: 600;
   cursor: pointer; 
-  box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 20px rgba(0, 191, 255, 0.5), 0 10px 30px rgba(30, 58, 138, 0.3);
   transition: all 0.3s ease;
-  animation: pulse 2s infinite;
+  animation: bluePulse 2s infinite;
 }
 .start-btn:hover, .start-btn:active { 
   transform: translateY(-2px); 
-  box-shadow: 0 15px 40px rgba(0, 255, 136, 0.4); 
+  box-shadow: 0 0 30px rgba(0, 191, 255, 0.7), 0 15px 40px rgba(30, 58, 138, 0.4); 
 }
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
+@keyframes bluePulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 191, 255, 0.5), 0 10px 30px rgba(30, 58, 138, 0.3); }
+  50% { box-shadow: 0 0 30px rgba(0, 191, 255, 0.8), 0 15px 40px rgba(30, 58, 138, 0.5); }
 }
 
 .info {
@@ -77,6 +77,9 @@ body {
 }
 .measurement-active .start-btn, .measurement-active .info { display: none; }
 .measurement-active .resetBtn { display: block; }
+
+/* Ensure button visible on load */
+.start-btn { display: block !important; }
 
 /* Mobile Optimizations */
 @media (max-width: 480px) {
