@@ -1,5 +1,4 @@
-// js/opencvMeasure.js  ← Auto-starts camera + full measurement
-console.log("opencvMeasure.js loaded");
+console.log("Fallback 2D measure loaded");
 
 const video = document.getElementById('videoFeed');
 const canvas = document.getElementById('overlay');
@@ -9,32 +8,28 @@ const resetBtn = document.getElementById('resetBtn');
 
 let points = [];
 
-// Auto-start camera when this file loads
 (async () => {
   try {
-    info.textContent = "Requesting camera...";
+    info.textContent = "Starting camera...";
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 } }
     });
     video.srcObject = stream;
     video.play();
 
-  video.onloadedmetadata = () => {
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  document.body.classList.add("measurement-active");  // This enables taps!
-  canvas.style.pointerEvents = "auto";
-  video.style.display = "block";
-  info.textContent = "Ready! Tap anywhere to place points";
-  draw();
-};
+    video.onloadedmetadata = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.style.pointerEvents = "auto";
+      video.style.display = "block";
+      info.textContent = "Tap screen to place points";
+      draw();
+    };
   } catch (err) {
-    info.textContent = "Camera failed: " + err.message;
-    console.error(err);
+    info.textContent = "Camera error: " + err.message;
   }
 })();
 
-// Tap handler
 function onTap(e) {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
@@ -56,7 +51,7 @@ function draw() {
   points.forEach(p => {
     ctx.fillStyle = "lime";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 15, 0, Math.PI*2);
+    ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
     ctx.fill();
   });
 
@@ -71,12 +66,11 @@ function draw() {
     ctx.stroke();
   }
 
-  // Simple distance (calibrated for ~50cm)
   let total = 0;
   for (let i = 1; i < points.length; i++) {
     const dx = points[i].x - points[i-1].x;
     const dy = points[i].y - points[i-1].y;
-    total += Math.hypot(dx, dy) * 0.0011;
+    total += Math.hypot(dx, dy) * 0.0011;  // Calibrate as needed
   }
   info.textContent = points.length < 2 
     ? `Points: ${points.length} — Tap to add`
@@ -86,7 +80,7 @@ function draw() {
 resetBtn.onclick = () => {
   points = [];
   draw();
-  info.textContent = "Reset! Tap to measure again";
+  info.textContent = "Reset—tap to measure";
 };
 
 window.addEventListener("resize", () => {
