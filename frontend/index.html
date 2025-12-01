@@ -1,20 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Collateral Tools</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Measurement</title>
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 
 <body>
+  <div id="info">Connecting to backend...</div>
 
-<h2>Choose a Tool</h2>
+  <button id="startBtn" style="
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    padding:12px 20px;
+    font-size:16px;
+    border:none;
+    border-radius:8px;
+    background-color:#007bff;
+    color:white;
+  ">Start Camera</button>
 
-<a href="ar.html"><button>AR Measurement</button></a>
-<br><br>
+  <video id="videoFeed" autoplay playsinline muted style="
+    display:none;
+    width:100vw;
+    height:100vh;
+    object-fit:cover;
+  "></video>
 
-<a href="call.html"><button>Video Call</button></a>
-<br><br>
+  <canvas id="overlay" style="
+    position:absolute;
+    top:0; left:0;
+    width:100vw;
+    height:100vh;
+    pointer-events:none;
+  "></canvas>
 
-<a href="measure.html"><button>Image Measurement</button></a>
+  <!-- SOCKET.IO -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+
+  <script>
+      const backendURL = "https://collateral-webxr.onrender.com";
+      const socket = io(backendURL, { transports: ["websocket"], reconnection: true });
+
+      socket.on("connect", () => {
+          document.getElementById("info").innerText = "Connected to backend! ✅";
+          socket.emit("join", "room1");
+      });
+  </script>
+
+  <!-- OpenCV.js -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+  <!-- TensorFlow + COCO-SSD -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
+
+  <!-- Helpers -->
+  <script src="js/helpers.js"></script>
+
+  <!-- Depth Estimation -->
+  <script type="module" src="js/depthEstimation.js"></script>
+
+  <!-- Measurement -->
+  <script src="js/opencvMeasure.js"></script>
+
+  <!-- WALL DETECTION (Loaded after OpenCV is ready) -->
+  <script>
+      // OpenCV loads async → wait until ready
+      cv['onRuntimeInitialized'] = () => {
+          console.log("OpenCV Ready! Starting wall detection…");
+          // Load script dynamically so it runs AFTER OpenCV loads
+          const script = document.createElement("script");
+          script.src = "js/opencvWalls.js";
+          document.body.appendChild(script);
+      };
+  </script>
+
 
 </body>
 </html>
