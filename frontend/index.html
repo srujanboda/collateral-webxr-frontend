@@ -5,38 +5,75 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AR Ruler</title>
   <style>
-    body { margin:0; overflow:hidden; background:#000; height:100vh; }
+    body {
+      margin:0; overflow:hidden; background:#000; height:100vh;
+      font-family: system-ui, sans-serif;
+      color: white;
+    }
+    #instruction {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 19px;
+      font-weight: 500;
+      text-align: center;
+      background: rgba(0,0,0,0.6);
+      padding: 12px 24px;
+      border-radius: 16px;
+      white-space: nowrap;
+      z-index: 999;
+    }
     #msg {
-      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-      color:white; font:bold 24px system-ui; background:rgba(0,0,0,0.7);
-      padding:20px 40px; border-radius:16px; z-index:9999;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 28px;
+      font-weight: bold;
+      text-align: center;
+      line-height: 1.4;
+      z-index: 999;
     }
     .custom-ar-button {
-      position:fixed !important; bottom:30px !important; left:50% !important;
-      transform:translateX(-50%) !important; padding:18px 70px !important;
-      font-size:23px !important; font-weight:bold !important; background:#0066ff !important;
-      color:white !important; border:none !important; border-radius:16px !important;
-      box-shadow:0 12px 30px rgba(0,0,0,0.7) !important; z-index:9999 !important;
+      position: fixed !important;
+      bottom: 60px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      padding: 20px 80px !important;
+      font-size: 24px !important;
+      font-weight: bold !important;
+      background: #0066ff !important;
+      color: white !important;
+      border: none !important;
+      border-radius: 20px !important;
+      box-shadow: 0 12px 35px rgba(0,102,255,0.4) !important;
+      z-index: 9999 !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
   </style>
 </head>
 <body>
 
-  <div id="msg">Checking AR support…</div>
+  <!-- Single line instruction at top -->
+  <div id="instruction">Move phone → look for green ring → tap screen to place point</div>
+
+  <!-- Big centered message -->
+  <div id="msg">AR Ready<br><span style="font-size:20px">Tap START AR</span></div>
 
   <script type="module">
     import { supportsWebXR } from "./js/main.js";
 
     const msg = document.getElementById("msg");
 
-    const supported = await supportsWebXR();
-
-    if (supported) {
-      msg.textContent = "AR Ready – Tap START AR";
-      // Load the app.js itself creates the button
+    if (await supportsWebXR()) {
+      // app.js will create the blue button automatically
       import("./js/app.js");
     } else {
-      msg.textContent = "AR not supported on this device";
+      msg.innerHTML = "AR Not Supported<br>on this device";
+      document.getElementById("instruction").style.display = "none";
     }
   </script>
 
