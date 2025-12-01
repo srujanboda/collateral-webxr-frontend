@@ -25,7 +25,7 @@ function init() {
   infoDiv.style.cssText = `
     position:fixed; top:16px; left:50%; transform:translateX(-50%);
     background:rgba(0,0,0,0.75); color:white; padding:10px 24px;
-    border-radius:16px; font:bold 19px system-ui; z-index:999; pointer-events:none;
+    border-radius:16px; font:bold 10px system-ui; z-index:999; pointer-events:none;
   `;
   infoDiv.textContent = "Move phone → look for green ring → tap to place point";
   document.body.appendChild(infoDiv);
@@ -47,7 +47,7 @@ function init() {
   stopBtn.textContent = "Stop AR";
   stopBtn.style.cssText = `
     position:fixed; bottom:30px; right:20px;
-    padding:14px 28px; font-size:17px; font-weight:bold;
+    padding:14px 28px; font-size:13px; font-weight:bold;
     background:#444; color:white; border:none; border-radius:14px;
     box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999;
   `;
