@@ -15,7 +15,6 @@
 <body>
   <div id="info">Loading AR Ruler…</div>
 
-  <!-- This script automatically detects AR and starts the correct mode -->
   <script type="module">
     import { supportsWebXR } from "./js/main.js";
 
@@ -24,11 +23,10 @@
     const hasAR = await supportsWebXR();
 
     if (hasAR) {
-      info.textContent = "AR supported – starting 3D ruler…";
-      import("./js/app.js");                     // ← This creates the correct START AR button
+      info.textContent = "AR Ready – Tap START AR below";
+      import("./js/app.js");
     } else {
-      info.textContent = "No AR – starting 2D AI ruler…";
-      // start your 2D fallback if you want
+      info.textContent = "No AR – Starting 2D AI mode…";
       import("./js/opencvMeasure.js");
     }
   </script>
