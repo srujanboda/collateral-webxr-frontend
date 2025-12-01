@@ -1,4 +1,4 @@
-// js/app.js — FINAL CLEAN VERSION (No overlapping text, Reset at bottom)
+// js/app.js — FINAL CLEAN & PROFESSIONAL VERSION
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -6,9 +6,7 @@ import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/
 let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
 let points = [], pointMeshes = [], line = null, labels = [];
-
-// Only ONE info div — we control it fully
-let infoDiv;
+let infoDiv, resetBtn, stopBtn;
 
 init();
 
@@ -22,31 +20,61 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Clean top info
+  // === TOP INFO BAR ===
   infoDiv = document.createElement('div');
   infoDiv.style.cssText = `
     position:fixed; top:16px; left:50%; transform:translateX(-50%);
-    background:rgba(0,0,0,0.7); color:white; padding:10px 20px;
-    border-radius:12px; font: bold 18px system-ui; z-index:999;
-    pointer-events:none; text-align:center; max-width:90%;
+    background:rgba(0,0,0,0.75); color:white; padding:10px 24px;
+    border-radius:16px; font:bold 19px system-ui; z-index:999;
+    pointer-events:none; white-space:nowrap;
   `;
   infoDiv.textContent = "Move phone → look for green ring → Tap to place point";
   document.body.appendChild(infoDiv);
 
-  // Create AR button (styled by CSS above)
-  const btn = ARButton.createButton(renderer, {
+  // === RESET BUTTON (bottom center) ===
+  resetBtn = document.createElement('button');
+  resetBtn.textContent = "Reset Measurement";
+  resetBtn.style.cssText = `
+    position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+    padding:14px 36px; font-size:18px; font-weight:bold;
+    background:#ff3333; color:white; border:none; border-radius:14px;
+    box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999;
+  `;
+  resetBtn.onclick = resetAll;
+  resetBtn.style.display = "none";
+  document.body.appendChild(resetBtn);
+
+  // === STOP AR BUTTON (top-right) ===
+  stopBtn = document.createElement('button');
+  stopBtn.textContent = "Stop AR";
+  stopBtn.style.cssText = `
+    position:fixed; top:16px; right:16px;
+    padding:10px 20px; font-size:16px; font-weight:bold;
+    background:#333; color:white; border:none; border-radius:12px;
+    box-shadow:0 4px 15px rgba(0,0,0,0.4); z-index:999;
+  `;
+  stopBtn.onclick = () => renderer.xr.getSession()?.end();
+  document.body.appendChild(stopBtn);
+
+  // === START AR BUTTON ===
+  const arBtn = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
     domOverlay: { root: document.body }
   });
-  btn.classList.add('custom-ar-button');
-  document.body.appendChild(btn);
+  arBtn.classList.add('custom-ar-button');
+  document.body.appendChild(arBtn);
+
+  // Hide loading text when AR starts
+  arBtn.addEventListener('click', () => {
+    document.getElementById("loading")?.remove();
+  });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI/2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff88 })
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, opacity: 0.9, transparent: true })
   );
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
@@ -63,10 +91,7 @@ function onSelect() {
   if (!reticle.visible) return;
   const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
 
-  const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.016),
-    new THREE.MeshBasicMaterial({ color: 0x00ffaa })
-  );
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.016), new THREE.MeshBasicMaterial({color:0x00ffaa}));
   dot.position.copy(p);
   scene.add(dot);
   pointMeshes.push(dot);
@@ -81,9 +106,12 @@ function updateAll() {
   labels = [];
 
   if (points.length < 2) {
-    infoDiv.innerHTML = `Points: ${points.length} – Tap when you see green ring`;
+    infoDiv.textContent = "Tap when green ring appears";
+    resetBtn.style.display = "none";
     return;
   }
+
+  resetBtn.style.display = "block";
 
   line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(points),
@@ -97,11 +125,10 @@ function updateAll() {
     total += dist;
 
     const mid = new THREE.Vector3().lerpVectors(points[i-1], points[i], 0.5);
-
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.width = 160; canvas.height = 60;
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
     ctx.fillRect(0,0,160,60);
     ctx.fillStyle = 'white';
     ctx.font = 'bold 38px system-ui';
@@ -110,8 +137,7 @@ function updateAll() {
     ctx.fillText(dist.toFixed(2)+' m', 80, 30);
 
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(canvas),
-      depthTest: false
+      map: new THREE.CanvasTexture(canvas), depthTest: false
     }));
     sprite.position.copy(mid);
     sprite.scale.set(0.20, 0.08, 1);
@@ -119,36 +145,18 @@ function updateAll() {
     labels.push(sprite);
   }
 
-  // Top info + Reset button at bottom
-  infoDiv.innerHTML = `Total: <span style="color:#ff4444;font-size:22px">${total.toFixed(2)} m</span> • ${points.length} pts`;
-
-  // Add Reset button at bottom center
-  let resetBtn = document.getElementById('reset-btn');
-  if (!resetBtn) {
-    resetBtn = document.createElement('button');
-    resetBtn.id = 'reset-btn';
-    resetBtn.textContent = 'Reset Measurement';
-    resetBtn.style.cssText = `
-      position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
-      padding:14px 32px; font-size:18px; font-weight:bold;
-      background:#ff3333; color:white; border:none; border-radius:12px;
-      box-shadow:0 8px 20px rgba(0,0,0,0.5); z-index:9999;
-    `;
-    resetBtn.onclick = () => window.resetAll();
-    document.body.appendChild(resetBtn);
-  }
+  infoDiv.innerHTML = `Total: <span style="color:#ff4444;font-size:23px">${total.toFixed(2)} m</span> • ${points.length} points`;
 }
 
-window.resetAll = () => {
+function resetAll() {
   points.forEach(p => pointMeshes.forEach(m => scene.remove(m)));
   points = []; pointMeshes = [];
   if (line) scene.remove(line);
   labels.forEach(l => scene.remove(l));
   labels = []; line = null;
-  infoDiv.innerHTML = "Cleared – Tap to measure again";
-  const btn = document.getElementById('reset-btn');
-  if (btn) btn.remove();
-};
+  infoDiv.textContent = "Cleared – Tap to measure again";
+  resetBtn.style.display = "none";
+}
 
 function render(t, frame) {
   if (!frame) return;
