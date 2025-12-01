@@ -5,12 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AR Ruler</title>
   <style>
-    body { margin:0; overflow:hidden; background:#000; }
-    #info {
-      position:fixed; top:16px; left:16px; background:rgba(0,0,0,0.7); color:white;
-      padding:10px 16px; border-radius:12px; font:16px system-ui; z-index:9999;
-    }
-  </style>
+  .custom-ar-button {
+    position: fixed !important;
+    bottom: 30px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    padding: 16px 48px !important;
+    font-size: 21px !important;
+    font-weight: bold !important;
+    background: #0066ff !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
+    z-index: 9999 !important;
+  }
+</style>
 </head>
 <body>
   <div id="info">Loading AR Ruler…</div>
