@@ -1,12 +1,12 @@
-// js/app.js — FINAL CLEAN & PROFESSIONAL VERSION
+// js/app.js — FINAL PERFECT VERSION (Dec 2025)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
-import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
+import { ARButton } from '://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
 let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
 let points = [], pointMeshes = [], line = null, labels = [];
-let infoDiv, resetBtn, stopBtn;
+let infoDiv, resetBtn;
 
 init();
 
@@ -20,43 +20,29 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // === TOP INFO BAR ===
+  // Top info bar
   infoDiv = document.createElement('div');
   infoDiv.style.cssText = `
     position:fixed; top:16px; left:50%; transform:translateX(-50%);
     background:rgba(0,0,0,0.75); color:white; padding:10px 24px;
-    border-radius:16px; font:bold 19px system-ui; z-index:999;
-    pointer-events:none; white-space:nowrap;
+    border-radius:16px; font:bold 19px system-ui; z-index:999; pointer-events:none;
   `;
-  infoDiv.textContent = "Move phone → look for green ring → Tap to place point";
+  infoDiv.textContent = "Move phone to find surface → Tap when green ring appears";
   document.body.appendChild(infoDiv);
 
-  // === RESET BUTTON (bottom center) ===
+  // Reset button (bottom center)
   resetBtn = document.createElement('button');
   resetBtn.textContent = "Reset Measurement";
   resetBtn.style.cssText = `
     position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
-    padding:14px 36px; font-size:18px; font-weight:bold;
-    background:#ff3333; color:white; border:none; border-radius:14px;
-    box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999;
+    padding:14px 36px; font-size:18px; font-weight:bold; background:#ff3333;
+    color:white; border:none; border-radius:14px; box-shadow:0 8px 25px rgba(0,0,0,0.5);
+    z-index:999; display:none;
   `;
   resetBtn.onclick = resetAll;
-  resetBtn.style.display = "none";
   document.body.appendChild(resetBtn);
 
-  // === STOP AR BUTTON (top-right) ===
-  stopBtn = document.createElement('button');
-  stopBtn.textContent = "Stop AR";
-  stopBtn.style.cssText = `
-    position:fixed; top:16px; right:16px;
-    padding:10px 20px; font-size:16px; font-weight:bold;
-    background:#333; color:white; border:none; border-radius:12px;
-    box-shadow:0 4px 15px rgba(0,0,0,0.4); z-index:999;
-  `;
-  stopBtn.onclick = () => renderer.xr.getSession()?.end();
-  document.body.appendChild(stopBtn);
-
-  // === START AR BUTTON ===
+  // ONLY ONE START AR BUTTON — created by Three.js
   const arBtn = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -65,9 +51,12 @@ function init() {
   arBtn.classList.add('custom-ar-button');
   document.body.appendChild(arBtn);
 
-  // Hide loading text when AR starts
+  // Remove the default Three.js "STOP AR" button completely
   arBtn.addEventListener('click', () => {
-    document.getElementById("loading")?.remove();
+    setTimeout(() => {
+      const threeStopBtn = document.querySelector('button[title="Exit AR"]');
+      if (threeStopBtn) threeStopBtn.remove();
+    }, 1000);
   });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
@@ -149,12 +138,13 @@ function updateAll() {
 }
 
 function resetAll() {
-  points.forEach(p => pointMeshes.forEach(m => scene.remove(m)));
-  points = []; pointMeshes = [];
+  points = [];
+  pointMeshes.forEach(m => scene.remove(m));
+  pointMeshes = [];
   if (line) scene.remove(line);
   labels.forEach(l => scene.remove(l));
   labels = []; line = null;
-  infoDiv.textContent = "Cleared – Tap to measure again";
+  infoDiv.textContent = "Cleared — start measuring again";
   resetBtn.style.display = "none";
 }
 
