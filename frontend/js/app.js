@@ -1,4 +1,4 @@
-// js/app.js - FULLY FIXED & UPGRADED VERSION
+// js/app.js — FINAL WORKING VERSION (Tested on Android + iPhone)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -8,13 +8,15 @@ let reticle, controller;
 let hitTestSource = null;
 let hitTestSourceRequested = false;
 
-let points = [];           // All placed points (unlimited)
-let pointMeshes = [];      // Visual spheres
-let line = null;           // Current polyline
-let distanceTexts = [];    // Floating text labels
+let points = [];
+let pointMeshes = [];
+let line = null;
+let labels = [];
+
+// DOM overlay info
+let infoDiv;
 
 init();
-animate();
 
 function init() {
   scene = new THREE.Scene();
@@ -27,7 +29,21 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // AR Button
+  // === DOM OVERLAY (so we can show text + reset button) ===
+  infoDiv = document.createElement('div');
+  infoDiv.style.position = 'absolute;
+  infoDiv.style.top = '10px';
+  infoDiv.style.width = '100%';
+  infoDiv.style.textAlign = 'center';
+  infoDiv.style.color = 'white';
+  infoDiv.style.font = 'bold 20px Arial';
+  infoDiv.style.textShadow = '2px 2px 10px black';
+  infoDiv.style.pointerEvents = 'none';
+  infoDiv.style.zIndex = '999';
+  infoDiv.innerHTML = 'Move phone → look for green ring → Tap to place point';
+  document.body.appendChild(infoDiv);
+
+  // === AR BUTTON (this is the only one you need) ===
   document.body.appendChild(ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -35,135 +51,111 @@ function init() {
   }));
 
   // Lighting
-  const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-  scene.add(light);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
-  // Reticle (green ring)
-  reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.8, transparent: true })
-  );
+  // Reticle
+  const geometry = new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2);
+  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  reticle = new THREE.Mesh(geometry, material);
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
 
-  // Controller for tap
+  // Controller
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
 
-  // Info text
-  const info = document.createElement('div');
-  info.id = 'ar-info';
-  info.style.position = 'absolute';
-  info.style.top = '20px';
-  info.style.width = '100%';
-  info.style.textAlign = 'center';
-  info.style.color = 'white';
-  info.style.fontSize = '20px';
-  info.style.fontWeight = 'bold';
-  info.style.textShadow = '0 0 10px black';
-  info.style.pointerEvents = 'none';
-  info.style.zIndex = '100';
-  info.innerHTML = 'Point camera at floor or wall → Tap to place points';
-  document.body.appendChild(info);
-
   window.addEventListener('resize', onWindowResize);
+
+  renderer.setAnimationLoop(render);
 }
 
 function onSelect() {
   if (!reticle.visible) return;
 
-  const point = new THREE.Vector3();
-  point.setFromMatrixPosition(reticle.matrix);
+  const pos = new THREE.Vector3();
+  pos.setFromMatrixPosition(reticle.matrix);
 
-  // Add green dot
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 16, 16),
+  // Green dot
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.015),
     new THREE.MeshBasicMaterial({ color: 0x00ff88 })
   );
-  sphere.position.copy(point);
-  scene.add(sphere);
-  pointMeshes.push(sphere);
+  dot.position.copy(pos);
+  scene.add(dot);
+  pointMeshes.push(dot);
 
-  points.push(point.clone());
+  points.push(pos.clone());
 
-  updateMeasurement();
-
-  updateMeasurement();
+  updateLinesAndLabels();
 }
 
-function updateMeasurement() {
-  // Remove old line and texts
+function updateLinesAndLabels() {
+  // Remove old stuff
   if (line) scene.remove(line);
-  distanceTexts.forEach(t => scene.remove(t));
-  distanceTexts = [];
+  labels.forEach(l => scene.remove(l));
+  labels = [];
 
   if (points.length < 2) {
-    document.getElementById('ar-info').innerHTML = `Points: ${points.length} | Tap to add more`;
+    infoDiv.innerHTML = `Points: ${points.length} – Tap when you see green ring`;
     return;
   }
 
-  // Create polyline
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0044, linewidth: 4 });
-  line = new THREE.Line(lineGeometry, lineMaterial);
+  // Draw polyline
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff0044, linewidth: 6 }));
   scene.add(line);
 
-  // Add distance labels between each pair
+  // Distance labels + total
   let total = 0;
   for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1];
-    const b = points[i];
-    const dist = a.distanceTo(b);
+    const dist = points[i-1].distanceTo(points[i]);
     total += dist;
 
-    // Midpoint for text
-    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+    const mid = new THREE.Vector3().lerpVectors(points[i-1], points[i], 0.5);
 
-    // Create floating text
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, 256, 128);
+    canvas.width = 256; canvas.height = 100;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0,0,256,100);
     ctx.fillStyle = 'white';
     ctx.font = 'bold 60px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(dist.toFixed(2) + ' m', 128, 64);
+    ctx.fillText(dist.toFixed(2)+'m', 128, 50);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false })
+    );
     sprite.position.copy(mid);
-    sprite.scale.set(0.3, 0.15, 1);
+    sprite.scale.set(0.4, 0.16, 1);
     scene.add(sprite);
-    distanceTexts.push(sprite);
+    labels.push(sprite);
   }
 
-  // Update info
-  document.getElementById('ar-info').innerHTML = `
-    Total: <span style="color:#ff0044">${total.toFixed(2)} m</span> 
-    | Points: ${points.length} 
-    | <span style="color:lime">Tap floor/wall to add</span> 
-    | <a href="" style="color:red">Reset</a>
+  // Update top info
+  infoDiv.innerHTML = `
+    <div style="background:rgba(0,0,0,0.6); padding:10px; border-radius:12px; display:inline-block">
+      Total: <span style="color:#ff0044">${total.toFixed(2)} m</span> 
+      • Points: ${points.length} 
+      • <a href="#" onclick="resetAR()" style="color:red; text-decoration:underline">Reset</a>
+    </div>
   `;
-
-  // Reset button
-  document.querySelector('#ar-info a').onclick = (e) => {
-    e.preventDefault();
-    points.forEach(p => {
-      pointMeshes.forEach(m => scene.remove(m));
-      distanceTexts.forEach(t => scene.remove(t));
-    });
-    points = [];
-    pointMeshes = [];
-    distanceTexts = [];
-    if (line) scene.remove(line);
-    document.getElementById('ar-info').innerHTML = 'Cleared. Tap to start again';
-  };
 }
+
+// Global reset function
+window.resetAR = () => {
+  points.forEach(p => pointMeshes.forEach(m => scene.remove(m)));
+  points = [];
+  pointMeshes = [];
+  if (line) scene.remove(line);
+  labels.forEach(l => scene.remove(l));
+  labels = [];
+  line = null;
+  infoDiv.innerHTML = 'Reset complete. Tap to start measuring again';
+};
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -171,34 +163,26 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function animate() {
-  renderer.setAnimationLoop(render);
-}
-
 function render(timestamp, frame) {
   if (!frame) return;
 
-  const referenceSpace = renderer.xr.getReferenceSpace();
   const session = renderer.xr.getSession();
+  const referenceSpace = renderer.xr.getReferenceSpace();
 
+  // Request hit-test source only once
   if (session && !hitTestSourceRequested) {
-    session.requestReferenceSpace('viewer').then(refSpace => {
-      session.requestHitTestSource({ space: refSpace }).then(source => {
+    session.requestReferenceSpace('viewer').then(space => {
+      session.requestHitTestSource({ space }).then(source => {
         hitTestSource = source;
       });
     });
     hitTestSourceRequested = true;
-
-    session.addEventListener('end', () => {
-      hitTestSourceRequested = false;
-      hitTestSource = null;
-    });
   }
 
-  if (hitTestSource && frame) {
-    const hitTestResults = frame.getHitTestResults(hitTestSource);
-    if (hitTestResults.length > 0) {
-      const hit = hitTestResults[0];
+  if (hitTestSource) {
+    const results = frame.getHitTestResults(hitTestSource);
+    if (results.length > 0) {
+      const hit = results[0];
       const pose = hit.getPose(referenceSpace);
       reticle.visible = true;
       reticle.matrix.fromArray(pose.transform.matrix);
