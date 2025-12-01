@@ -2,83 +2,97 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Camera Measurement</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AR & AI Measurement Ruler</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
-
 <body>
-  <div id="info">Connecting to backend...</div>
+  <div id="info">Checking device...</div>
 
-  <button id="startBtn" style="
-    position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    padding:12px 20px;
-    font-size:16px;
-    border:none;
-    border-radius:8px;
-    background-color:#007bff;
-    color:white;
-  ">Start Camera</button>
+  <button id="startBtn">Start Camera</button>
 
-  <video id="videoFeed" autoplay playsinline muted style="
-    display:none;
-    width:100vw;
-    height:100vh;
-    object-fit:cover;
-  "></video>
+  <video id="videoFeed" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
 
-  <canvas id="overlay" style="
-    position:absolute;
-    top:0; left:0;
-    width:100vw;
-    height:100vh;
-    pointer-events:none;
-  "></canvas>
+  <!-- For future multiplayer (optional) -->
+  <video id="remoteVideo" autoplay playsinline style="display:none;"></video>
 
-  <!-- SOCKET.IO -->
+  <!-- Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-
-  <script>
-      const backendURL = "https://collateral-webxr.onrender.com";
-      const socket = io(backendURL, { transports: ["websocket"], reconnection: true });
-
-      socket.on("connect", () => {
-          document.getElementById("info").innerText = "Connected to backend! ✅";
-          socket.emit("join", "room1");
-      });
-  </script>
-
-  <!-- OpenCV.js -->
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
-
-  <!-- TensorFlow + COCO-SSD -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
 
-  <!-- Helpers -->
-  <script src="js/helpers.js"></script>
+  <!-- Main App Logic (type="module" is REQUIRED) -->
+  <script type="module">
+    // Import only the detection function from main.js
+    import { supportsWebXR } from "./js/main.js";
 
-  <!-- Depth Estimation -->
-  <script type="module" src="js/depthEstimation.js"></script>
+    const startBtn = document.getElementById("startBtn");
+    const infoBox = document.getElementById("info");
+    const video = document.getElementById("videoFeed");
+    const canvas = document.getElementById("overlay");
 
-  <!-- Measurement -->
-  <script src="js/opencvMeasure.js"></script>
+    startBtn.onclick = async () => {
+      startBtn.style.display = "none";
+      infoBox.textContent = "Requesting camera...";
 
-  <!-- WALL DETECTION (Loaded after OpenCV is ready) -->
-  <script>
-      // OpenCV loads async → wait until ready
-      cv['onRuntimeInitialized'] = () => {
-          console.log("OpenCV Ready! Starting wall detection…");
-          // Load script dynamically so it runs AFTER OpenCV loads
-          const script = document.createElement("script");
-          script.src = "js/opencvWalls.js";
-          document.body.appendChild(script);
-      };
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }, // back camera
+          audio: false
+        });
+
+        video.srcObject = stream;
+        video.style.display = "block";
+        video.play();
+
+        // Wait a moment for video dimensions
+        video.onloadedmetadata = async () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+
+          const hasAR = await supportsWebXR();
+
+          if (hasAR) {
+            infoBox.textContent = "Starting AR Mode (WebXR)";
+            // Load full 3D AR ruler
+            import("./js/app.js").catch(err => {
+              console.error("AR failed:", err);
+              fallback2D();
+            });
+          } else {
+            infoBox.textContent = "Using AI Depth Mode (No AR)";
+            fallback2D();
+          }
+        };
+
+      } catch (err) {
+        console.error(err);
+        infoBox.textContent = "Camera access denied";
+        startBtn.style.display = "block";
+      }
+    };
+
+    function fallback2D() {
+      // Load 2D measurement with MediaPipe depth + OpenCV
+      import("./js/depthEstimation.js");
+      import("./js/opencvMeasure.js");
+    }
+
+    function onOpenCvReady() {
+      console.log("OpenCV.js loaded");
+      // opencvWalls.js will be loaded automatically from opencvMeasure.js if needed
+    }
+
+    // Optional: show connection status to your backend
+    const socket = io("https://collateral-webxr.onrender.com", {
+      transports: ["websocket"]
+    });
+    socket.on("connect", () => {
+      infoBox.textContent += " | Backend connected";
+    });
+
   </script>
-
-
 </body>
 </html>
