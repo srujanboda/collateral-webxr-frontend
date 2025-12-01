@@ -25,7 +25,7 @@ function init() {
   infoDiv.style.cssText = `
     position:fixed; top:16px; left:50%; transform:translateX(-50%);
     background:rgba(0,0,0,0.75); color:white; padding:10px 24px;
-    border-radius:16px; font:bold 10px system-ui; z-index:999; pointer-events:none;
+    border-radius:16px; font:bold 11px system-ui; z-index:999; pointer-events:none;
   `;
   infoDiv.textContent = "Move phone → look for green ring → tap to place point";
   document.body.appendChild(infoDiv);
@@ -64,15 +64,15 @@ function init() {
   document.body.appendChild(arButton);
 
   // Remove any duplicate "STOP AR" button from Three.js
-  arButton.addEventListener('click', () => {
-    setTimeout(() => {
-      document.querySelectorAll('button').forEach(btn => {
-        if (btn !== stopBtn && (btn.textContent.includes('STOP') || btn.textContent.includes('EXIT'))) {
-          btn.remove();
-        }
-      });
-    }, 1000);
-  });
+  // arButton.addEventListener('click', () => {
+  //   setTimeout(() => {
+  //     document.querySelectorAll('button').forEach(btn => {
+  //       if (btn !== stopBtn && (btn.textContent.includes('STOP') || btn.textContent.includes('EXIT'))) {
+  //         btn.remove();
+  //       }
+  //     });
+  //   }, 1000);
+  // });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
