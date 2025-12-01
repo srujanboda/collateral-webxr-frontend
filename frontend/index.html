@@ -3,95 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>AR & AI Measurement Ruler</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <title>AR Ruler</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; }
+    #info {
+      position:fixed; top:16px; left:16px; background:rgba(0,0,0,0.7); color:white;
+      padding:10px 16px; border-radius:12px; font:16px system-ui; z-index:9999;
+    }
+  </style>
 </head>
 <body>
-  <div id="info">Checking device...</div>
+  <div id="info">Loading AR Ruler…</div>
 
-  <button id="startBtn">Start Camera</button>
-  <video id="videoFeed" autoplay playsinline muted></video>
-  <canvas id="overlay"></canvas>
-
-  <!-- For future multiplayer (optional) -->
-  <video id="remoteVideo" autoplay playsinline style="display:none;"></video>
-
-  <!-- Libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-  <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
-
-  <!-- Main App Logic (type="module" is REQUIRED) -->
+  <!-- This script automatically detects AR and starts the correct mode -->
   <script type="module">
-    // Import only the detection function from main.js
     import { supportsWebXR } from "./js/main.js";
 
-    const startBtn = document.getElementById("startBtn");
-    const infoBox = document.getElementById("info");
-    const video = document.getElementById("videoFeed");
-    const canvas = document.getElementById("overlay");
+    const info = document.getElementById("info");
 
-    startBtn.onclick = async () => {
-      startBtn.style.display = "none";
-      infoBox.textContent = "Requesting camera...";
+    const hasAR = await supportsWebXR();
 
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" }, // back camera
-          audio: false
-        });
-
-        video.srcObject = stream;
-        video.style.display = "block";
-        video.play();
-
-        // Wait a moment for video dimensions
-        video.onloadedmetadata = async () => {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-
-          const hasAR = await supportsWebXR();
-
-          if (hasAR) {
-            infoBox.textContent = "Starting AR Mode (WebXR)";
-            // Load full 3D AR ruler
-            import("./js/app.js").catch(err => {
-              console.error("AR failed:", err);
-              fallback2D();
-            });
-          } else {
-            infoBox.textContent = "Using AI Depth Mode (No AR)";
-            fallback2D();
-          }
-        };
-
-      } catch (err) {
-        console.error(err);
-        infoBox.textContent = "Camera access denied";
-        startBtn.style.display = "block";
-      }
-    };
-
-    function fallback2D() {
-      // Load 2D measurement with MediaPipe depth + OpenCV
-      import("./js/depthEstimation.js");
+    if (hasAR) {
+      info.textContent = "AR supported – starting 3D ruler…";
+      import("./js/app.js");                     // ← This creates the correct START AR button
+    } else {
+      info.textContent = "No AR – starting 2D AI ruler…";
+      // start your 2D fallback if you want
       import("./js/opencvMeasure.js");
     }
-
-    function onOpenCvReady() {
-      console.log("OpenCV.js loaded");
-      // opencvWalls.js will be loaded automatically from opencvMeasure.js if needed
-    }
-
-    // Optional: show connection status to your backend
-    const socket = io("https://collateral-webxr.onrender.com", {
-      transports: ["websocket"]
-    });
-    socket.on("connect", () => {
-      infoBox.textContent += " | Backend connected";
-    });
-
   </script>
 </body>
 </html>
