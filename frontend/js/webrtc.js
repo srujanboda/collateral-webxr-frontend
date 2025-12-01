@@ -1,130 +1,69 @@
-// ----------------------------------------------
-// WebRTC + Socket.IO Signaling (Fixed for Render)
-// ----------------------------------------------
+console.log("webrtc.js loaded");
 
-const SIGNALING_SERVER = "https://collateral-webxr.onrender.com";
+let localVideo = document.getElementById("localVideo");
+let remoteVideo = document.getElementById("remoteVideo");
 
-// Force websocket transport for Render + Socket.IO
-const socket = io(SIGNALING_SERVER, {
-    transports: ["websocket"],
-    reconnection: true,
-    reconnectionAttempts: 10,
-});
+let pc;
+let ws;
 
-// Room name (can be customized)
-const ROOM_ID = "default-room";
+// ✔ Your FREE hosted signaling server
+const SIGNALING_URL = "wss://srujan-signaling.onrender.com";
 
-// Join signaling room
-socket.emit("join", ROOM_ID);
+function createPeerConnection() {
+  pc = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  });
 
-// Debug logs
-socket.on("connect", () => {
-    console.log("✅ Connected to signaling server");
-});
-
-// When another peer joins, backend sends "ready"
-socket.on("ready", () => {
-    console.log("📡 Peer ready — sending offer");
-    if (pc) {
-        createOffer();
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      ws.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
     }
-});
+  };
 
-// Receive offer → set remote description → respond with answer
-socket.on("offer", async (desc) => {
-    console.log("📡 Received offer");
-    await pc.setRemoteDescription(desc);
-    await createAnswer();
-});
-
-// Receive answer → complete handshake
-socket.on("answer", async (desc) => {
-    console.log("📡 Received answer");
-    await pc.setRemoteDescription(desc);
-});
-
-// ICE candidate exchange
-socket.on("candidate", async (candidate) => {
-    console.log("🌐 Received ICE candidate");
-    if (candidate) {
-        try {
-            await pc.addIceCandidate(candidate);
-        } catch (err) {
-            console.error("🔥 ICE add error:", err);
-        }
-    }
-});
-
-// ---------------------------------------------------------
-// WebRTC Peer Connection Setup
-// ---------------------------------------------------------
-
-let pc = null;
-let localStream = null;
-
-// Call this function when starting AR session or camera preview
-async function startConnection() {
-    console.log("🎥 Starting camera + peer connection");
-
-    localStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-    });
-
-    pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: "stun:stun.l.google.com:19302" }
-        ]
-    });
-
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            console.log("🌐 Sending ICE candidate");
-            socket.emit("candidate", {
-                room: ROOM_ID,
-                candidate: event.candidate
-            });
-        }
-    };
-
-    pc.ontrack = (event) => {
-        const remoteVideo = document.getElementById("remoteVideo");
-        if (remoteVideo) {
-            remoteVideo.srcObject = event.streams[0];
-        }
-    };
+  pc.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
 }
 
-// ---------------------------------------------------------
-// Offer / Answer functions
-// ---------------------------------------------------------
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  localVideo.srcObject = stream;
+  stream.getTracks().forEach(t => pc.addTrack(t, stream));
+}
 
-async function createOffer() {
+async function startCall() {
+  ws = new WebSocket(SIGNALING_URL);
+
+  ws.onopen = async () => {
+    createPeerConnection();
+    await startCamera();
+
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({ type: "offer", offer }));
+  };
 
-    console.log("📡 Sending offer");
-    socket.emit("offer", {
-        room: ROOM_ID,
-        description: offer,
-    });
+  ws.onmessage = async (msg) => {
+    const data = JSON.parse(msg.data);
+
+    if (data.type === "offer") {
+      createPeerConnection();
+      await startCamera();
+      await pc.setRemoteDescription(data.offer);
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      ws.send(JSON.stringify({ type: "answer", answer }));
+    }
+
+    if (data.type === "answer") {
+      await pc.setRemoteDescription(data.answer);
+    }
+
+    if (data.type === "candidate") {
+      await pc.addIceCandidate(data.candidate);
+    }
+  };
 }
 
-async function createAnswer() {
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    console.log("📡 Sending answer");
-    socket.emit("answer", {
-        room: ROOM_ID,
-        description: answer,
-    });
-}
-
-// ---------------------------------------------------------
-// Export functions to global scope if needed
-// ---------------------------------------------------------
-
-window.startConnection = startConnection;
+window.startCall = startCall;
