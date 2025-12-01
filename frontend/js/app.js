@@ -1,4 +1,4 @@
-// js/app.js — FINAL WORKING VERSION (Dec 2025)
+// js/app.js — FINAL VERSION WITH CLEAN BUTTONS (Dec 2025)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -6,7 +6,7 @@ import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/
 let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
 let points = [], pointMeshes = [], line = null, labels = [];
-let infoDiv, resetBtn;
+let infoDiv, resetBtn, stopBtn;
 
 init();
 
@@ -20,20 +20,41 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Top info
+  // Top info (total distance)
   infoDiv = document.createElement('div');
-  infoDiv.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0.75);color:white;padding:10px 24px;border-radius:16px;font:bold 19px system-ui;z-index:999;pointer-events:none;';
-  infoDiv.textContent = "Move phone → look for green ring → Tap to place point";
+  infoDiv.style.cssText = `
+    position:fixed; top:16px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.75); color:white; padding:10px 24px;
+    border-radius:16px; font:bold 19px system-ui; z-index:999; pointer-events:none;
+  `;
+  infoDiv.textContent = "Move phone → look for green ring → tap to place point";
   document.body.appendChild(infoDiv);
 
-  // Reset button (hidden at start)
+  // Reset Button — Bottom Left
   resetBtn = document.createElement('button');
-  resetBtn.textContent = "Reset Measurement";
-  resetBtn.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);padding:14px 36px;font-size:18px;font-weight:bold;background:#ff3333;color:white;border:none;border-radius:14px;box-shadow:0 8px 25px rgba(0,0,0,0.5);z-index:999;display:none;';
+  resetBtn.textContent = "Reset";
+  resetBtn.style.cssText = `
+    position:fixed; bottom:30px; left:20px;
+    padding:14px 28px; font-size:17px; font-weight:bold;
+    background:#ff3333; color:white; border:none; border-radius:14px;
+    box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999; display:none;
+  `;
   resetBtn.onclick = resetAll;
   document.body.appendChild(resetBtn);
 
-  // START AR BUTTON — created here so it appears instantly
+  // Stop AR Button — Bottom Right
+  stopBtn = document.createElement('button');
+  stopBtn.textContent = "Stop AR";
+  stopBtn.style.cssText = `
+    position:fixed; bottom:30px; right:20px;
+    padding:14px 28px; font-size:17px; font-weight:bold;
+    background:#444; color:white; border:none; border-radius:14px;
+    box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999;
+  `;
+  stopBtn.onclick = () => renderer.xr.getSession()?.end();
+  document.body.appendChild(stopBtn);
+
+  // START AR Button (created by Three.js — styled in index.html)
   const arButton = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -42,15 +63,15 @@ function init() {
   arButton.classList.add('custom-ar-button');
   document.body.appendChild(arButton);
 
-  // Remove the default Three.js STOP AR button that appears automatically
+  // Remove any duplicate "STOP AR" button from Three.js
   arButton.addEventListener('click', () => {
     setTimeout(() => {
       document.querySelectorAll('button').forEach(btn => {
-        if (btn.textContent.includes('EXIT') || btn.textContent.includes('STOP')) {
+        if (btn !== stopBtn && (btn.textContent.includes('STOP') || btn.textContent.includes('EXIT'))) {
           btn.remove();
         }
       });
-    }, 800);
+    }, 1000);
   });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
@@ -70,8 +91,6 @@ function init() {
   renderer.setAnimationLoop(render);
 }
 
-// ... (onSelect, updateAll, resetAll, render functions stay exactly the same as previous working version)
-
 function onSelect() {
   if (!reticle.visible) return;
   const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
@@ -89,7 +108,7 @@ function updateAll() {
   labels = [];
 
   if (points.length < 2) {
-    infoDiv.textContent = "Tap when you see the green ring";
+    infoDiv.textContent = "Tap when green ring appears";
     resetBtn.style.display = "none";
     return;
   }
@@ -108,7 +127,7 @@ function updateAll() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.width = 160; canvas.height = 60;
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0,0,160,60);
     ctx.fillStyle = 'white';
     ctx.font = 'bold 38px system-ui';
@@ -128,10 +147,10 @@ function updateAll() {
 
 function resetAll() {
   points = [];
-  pointMeshes.forEach(m=>scene.remove(m));
+  pointMeshes.forEach(m => scene.remove(m));
   pointMeshes = [];
-  if(line) scene.remove(line);
-  labels.forEach(l=>scene.remove(l));
+  if (line) scene.remove(line);
+  labels.forEach(l => scene.remove(l));
   labels = []; line = null;
   infoDiv.textContent = "Cleared — ready to measure again";
   resetBtn.style.display = "none";
