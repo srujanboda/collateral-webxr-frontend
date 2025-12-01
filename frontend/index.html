@@ -5,54 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AR Ruler</title>
   <style>
-    body { margin:0; padding:0; overflow:hidden; background:#000; font-family:system-ui,sans-serif; }
-    #loading-text {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      font-size: 22px;
-      font-weight: bold;
-      text-align: center;
-      background: rgba(0,0,0,0.6);
-      padding: 20px 40px;
-      border-radius: 16px;
-      z-index: 9999;
-    }
-    .custom-ar-button {
-      position: fixed !important;
-      bottom: 30px !important;
-      left: 50% !important;
-      transform: translateX(-50%) !important;
-      padding: 18px 50px !important;
-      font-size: 22px !important;
-      font-weight: bold !important;
-      background: #0066ff !important;
-      color: white !important;
-      border: none !important;
-      border-radius: 16px !important;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.6) !important;
-      z-index: 9999 !important;
+    body { margin:0; padding:0; overflow:hidden; background:#000; }
+    #loading { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font: bold 22px system-ui; background:rgba(0,0,0,0.7); padding:20px 40px; border-radius:16px; z-index:9999; }
+    .custom-ar-button { 
+      position:fixed !important; bottom:30px !important; left:50% !important; transform:translateX(-50%) !important;
+      padding:18px 50px !important; font-size:22px !important; font-weight:bold !important;
+      background:#0066ff !important; color:white !important; border:none !important; border-radius:16px !important;
+      box-shadow:0 10px 30px rgba(0,0,0,0.6) !important; z-index:9999 !important;
     }
   </style>
 </head>
 <body>
-
-  <div id="loading-text">Detecting AR support…</div>
+  <div id="loading">Detecting AR…</div>
 
   <script type="module">
     import { supportsWebXR } from "./js/main.js";
+    const loading = document.getElementById("loading");
 
-    const loading = document.getElementById("loading-text");
-
-    const hasAR = await supportsWebXR();
-
-    if (hasAR) {
-      loading.textContent = "AR Ready – Tap START AR below";
-      import("./js/app.js");  // This will create the button and everything
+    if (await supportsWebXR()) {
+      loading.textContent = "AR Ready – Tap START AR";
+      import("./js/app.js");
     } else {
-      loading.textContent = "No AR support – Starting 2D mode…";
+      loading.textContent = "Starting 2D mode…";
       import("./js/opencvMeasure.js");
     }
   </script>
