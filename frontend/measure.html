@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Image Measurement</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+<h2>OpenCV Image Measurement</h2>
+
+<input type="file" onchange="loadImageFile(event)">
+<br><br>
+
+<img id="inputImage" style="display:none">
+
+<canvas id="measureCanvas"></canvas>
+
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+<script src="js/app.js"></script>
+<script src="js/opencvMeasure.js"></script>
+
+</body>
+</html>
