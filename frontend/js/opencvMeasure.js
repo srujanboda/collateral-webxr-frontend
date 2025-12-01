@@ -1,92 +1,64 @@
-console.log("Fallback 2D measure loaded");
+// frontend/js/opencvMeasure.js
+// Simple 2D measurement using OpenCV.js (requires opencv.js loaded in HTML)
 
-const video = document.getElementById('videoFeed');
-const canvas = document.getElementById('overlay');
-const ctx = canvas.getContext('2d');
-const info = document.getElementById('info');
-const resetBtn = document.getElementById('resetBtn');
+console.log("opencvMeasure.js loaded");
 
-let points = [];
+let imgElement = document.getElementById("inputImage");
+let canvas = document.getElementById("measureCanvas");
+let ctx = canvas.getContext("2d");
 
-(async () => {
-  try {
-    info.textContent = "Starting camera...";
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 } }
-    });
-    video.srcObject = stream;
-    video.play();
+let clickPoints = [];
 
-    video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.style.pointerEvents = "auto";
-      video.style.display = "block";
-      info.textContent = "Tap screen to place points";
-      draw();
-    };
-  } catch (err) {
-    info.textContent = "Camera error: " + err.message;
-  }
-})();
+function loadImageIntoCanvas() {
+  canvas.width = imgElement.width;
+  canvas.height = imgElement.height;
+  ctx.drawImage(imgElement, 0, 0);
 
-function onTap(e) {
-  e.preventDefault();
+  clickPoints = [];
+}
+
+imgElement.onload = loadImageIntoCanvas;
+
+// Add click to place measurement points
+canvas.addEventListener("click", (e) => {
   const rect = canvas.getBoundingClientRect();
-  const x = (e.touches?.[0]?.clientX || e.clientX) - rect.left;
-  const y = (e.touches?.[0]?.clientY || e.clientY) - rect.top;
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
 
-  points.push({ x: x * scaleX, y: y * scaleY });
-  draw();
-}
+  clickPoints.push({ x, y });
 
-canvas.addEventListener("touchstart", onTap, { passive: false });
-canvas.addEventListener("click", onTap);
+  ctx.fillStyle = "red";
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fill();
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  points.forEach(p => {
-    ctx.fillStyle = "lime";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  if (points.length > 1) {
-    ctx.strokeStyle = "yellow";
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.stroke();
-  }
-
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    const dx = points[i].x - points[i-1].x;
-    const dy = points[i].y - points[i-1].y;
-    total += Math.hypot(dx, dy) * 0.0011;  // Calibrate as needed
-  }
-  info.textContent = points.length < 2 
-    ? `Points: ${points.length} — Tap to add`
-    : `Distance: ${total.toFixed(3)} m (${points.length} pts)`;
-}
-
-resetBtn.onclick = () => {
-  points = [];
-  draw();
-  info.textContent = "Reset—tap to measure";
-};
-
-window.addEventListener("resize", () => {
-  if (video.videoWidth) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    draw();
+  if (clickPoints.length === 2) {
+    drawMeasurement();
   }
 });
+
+function drawMeasurement() {
+  let p1 = clickPoints[0];
+  let p2 = clickPoints[1];
+
+  // Draw line
+  ctx.strokeStyle = "yellow";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+
+  // Pixel distance
+  const dx = p1.x - p2.x;
+  const dy = p1.y - p2.y;
+  const pixelDist = Math.sqrt(dx * dx + dy * dy);
+
+  // If you know reference object size, convert:
+  // const pixelsPerCM = knownPixelWidth / knownRealWidthCM;
+  // const cm = pixelDist / pixelsPerCM;
+
+  alert("Distance (pixels): " + pixelDist.toFixed(2));
+}
+
+window.loadImageIntoCanvas = loadImageIntoCanvas;
