@@ -5,24 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AR Ruler</title>
   <style>
-    body { margin:0; overflow:hidden; background:#000; }
+    body { margin:0; overflow:hidden; background:#000; height:100vh; }
+    #msg {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      color:white; font:bold 24px system-ui; background:rgba(0,0,0,0.7);
+      padding:20px 40px; border-radius:16px; z-index:9999;
+    }
     .custom-ar-button {
       position:fixed !important; bottom:30px !important; left:50% !important;
-      transform:translateX(-50%) !important; padding:18px 60px !important;
-      font-size:22px !important; font-weight:bold !important; background:#0066ff !important;
+      transform:translateX(-50%) !important; padding:18px 70px !important;
+      font-size:23px !important; font-weight:bold !important; background:#0066ff !important;
       color:white !important; border:none !important; border-radius:16px !important;
-      box-shadow:0 10px 30px rgba(0,0,0,0.6) !important; z-index:9999 !important;
+      box-shadow:0 12px 30px rgba(0,0,0,0.7) !important; z-index:9999 !important;
     }
   </style>
 </head>
 <body>
+
+  <div id="msg">Checking AR support…</div>
+
   <script type="module">
     import { supportsWebXR } from "./js/main.js";
-    if (await supportsWebXR()) {
+
+    const msg = document.getElementById("msg");
+
+    const supported = await supportsWebXR();
+
+    if (supported) {
+      msg.textContent = "AR Ready – Tap START AR";
+      // Load the app.js itself creates the button
       import("./js/app.js");
     } else {
-      document.body.innerHTML = "<h1>No AR support on this device</h1>;
+      msg.textContent = "AR not supported on this device";
     }
   </script>
+
 </body>
 </html>
