@@ -46,14 +46,25 @@ async function init() {
   undoBtn.onclick = undoLastPoint;
   document.body.appendChild(undoBtn);
 
-  // UNIT TOGGLE – MOVED TO BOTTOM-CENTER (SAFE ZONE)
+   // UNIT TOGGLE – TOP-LEFT, BELOW UNDO BUTTON (PERFECT SAFE SPOT)
   unitBtn = document.createElement('button');
   unitBtn.textContent = 'm';
   unitBtn.style.cssText = `
-    position:fixed; bottom:90px; left:50%; transform:translateX(-50%); z-index:9999;
-    padding:16px 32px; border-radius:40px; background:#0066ff; color:white;
-    font:bold 22px system-ui; border:none; box-shadow:0 8px 30px rgba(0,102,255,0.5);
-    min-width:120px;
+    position:fixed;
+    top:90px;                  /* 20px top + 56px undo height + 14px gap */
+    left:20px;
+    z-index:9999;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:#0066ff;
+    color:white;
+    border:none;
+    font:bold 20px system-ui;
+    box-shadow:0 8px 25px rgba(0,102,255,0.5);
+    display:flex;
+    align-items:center;
+    justify-content:center;
   `;
   unitBtn.onclick = () => {
     if (currentUnit === 'm') { currentUnit = 'ft'; unitBtn.textContent = 'ft'; }
