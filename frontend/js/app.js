@@ -1,16 +1,13 @@
-// js/app.js — FINAL: Multiple Independent Lines + Everything Else Perfect
+// js/app.js — FINAL PERFECT VERSION (Dec 2025)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
 let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
-
-// All measurements are stored in this array of "chains"
-let allChains = [];        // Each chain = { points: [], meshes: [], line: null, labels: [], total: 0 }
-let currentChain = null;   // The chain being edited right now
-
-let infoDiv, resetBtn, undoBtn, unitBtn, newLineBtn;
+let allChains = [];           // All finished measurements
+let currentChain = null;      // Current active measurement
+let infoDiv, undoBtn, unitBtn, newLineBtn, resetBtn;
 let isWallMode = false;
 let currentUnit = 'm';
 let video, canvas, ctx;
@@ -27,24 +24,25 @@ async function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Top info
+  // Top info bar
   infoDiv = document.createElement('div');
-  infoDiv.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);
+  infoDiv.style.cssText = `
+    position:fixed;top:16px;left:50%;transform:translateX(-50%);
     background:rgba(0,0,0,0.85);color:white;padding:12px 32px;border-radius:20px;
-    font:bold 20px system-ui;z-index:999;pointer-events:none;`;
+    font:bold 20px system-ui;z-index:999;pointer-events:none;
+  `;
   infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 m</span> • 0 pts`;
   document.body.appendChild(infoDiv);
 
-  // Buttons
-  undoBtn = createButton('↺', 'top:20px;left:20px;', () => undoLastPoint());
-  unitBtn = createButton('m', 'top:90px;left:20px;background:#0066ff;', () => toggleUnit());
-  newLineBtn = createButton('New Line', 'top:20px;right:130px;background:#444;', () => startNewLine());
-  resetBtn = createButton('Reset', 'top:20px;right:20px;background:#ff3333;', () => resetAll());
+  // Buttons (with stopPropagation)
+  undoBtn   = createBtn('↺', 'top:20px;left:20px;width:56px;height:56px;border-radius:50%;background:#333;font-size:28px;', undoLastPoint);
+  unitBtn   = createBtn('m',  'top:90px;left:20px;width:56px;height:56px;border-radius:50%;background:#0066ff;', toggleUnit);
+  newLineBtn = createBtn('New Line', 'top:20px;right:130px;background:#444;', startNewLine);
+  resetBtn  = createBtn('Reset',   'top:20px;right:20px;background:#ff3333;', resetAll);
 
-  // Hide controls until first point
   [undoBtn, newLineBtn, resetBtn].forEach(b => b.style.display = 'none');
 
-  // START AR
+  // AR Button
   const arButton = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -52,16 +50,19 @@ async function init() {
   });
   document.body.appendChild(arButton);
 
+  // Remove default STOP AR button
   arButton.addEventListener('click', () => {
-    setTimeout(() => document.querySelectorAll('button').forEach(b => {
-      if (b.textContent.toUpperCase().includes('STOP') || b.textContent.toUpperCase().includes('EXIT')) b.remove();
-    }), 800);
+    setTimeout(() => {
+      document.querySelectorAll('button').forEach(b => {
+        if (/stop|exit/i.test(b.textContent)) b.remove();
+      });
+    }, 1000);
   });
 
-  // Camera + OpenCV
+  // Video + OpenCV canvas (for wall corners)
   video = document.createElement('video');
   video.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:-1;';
-  video.autoplay = video.playsInline = video.muted = true;
+  video.autoplay = video.muted = video.playsInline = true;
   document.body.appendChild(video);
 
   canvas = document.createElement('canvas');
@@ -70,15 +71,13 @@ async function init() {
   ctx = canvas.getContext('2d');
 
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(s => { video.srcObject = s; video.play(); }).catch(() => {});
-
-  if (typeof cv !== 'undefined') onOpenCVReady();
-  window.onOpenCVReady = () => startWallDetection();
+    .then(s => { video.srcObject = s; video.play(); })
+    .catch(() => {});
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
   reticle = new THREE.Mesh(
-    new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI/2),
+    new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0x00ff88 })
   );
   reticle.matrixAutoUpdate = false;
@@ -89,23 +88,28 @@ async function init() {
   controller.addEventListener('select', onSelect);
   scene.add(controller);
 
-  renderer.domElement.addEventListener('click', e => { if (e.target === renderer.domElement) onScreenTap(e); });
+  // Only trigger tap on empty space
+  renderer.domElement.addEventListener('click', e => {
+    if (e.target === renderer.domElement) onScreenTap(e);
+  });
+
   renderer.setAnimationLoop(render);
 
   // Start first chain
   startNewLine();
 }
 
-// Helper to create buttons with stopPropagation
-function createButton(text, style, onclick) {
-  const btn = document.createElement('button');
-  btn.textContent = text;
-  btn.style.cssText = `position:fixed;z-index:9999;padding:12px 24px;border:none;border-radius:14px;color:white;font:bold 16px system-ui;box-shadow:0 6px 20px rgba(0,0,0,0.5);${style}`;
-  if (text === '↺') btn.style.cssText += 'width:56px;height:56px;border-radius:50%;font-size:28px;background:#333;';
-  if (text === 'm') btn.style.cssText += 'width:56px;height:56px;border-radius:50%;background:#0066ff;display:flex;align-items:center;justify-content:center;';
-  btn.addEventListener('click', e => { e.stopPropagation(); onclick(); });
-  document.body.appendChild(btn);
-  return btn;
+// Helper
+function createBtn(text, style, fn) {
+  const b = document.createElement('button');
+  b.textContent = text;
+  b.style.cssText = `position:fixed;z-index:9999;color:white;font:bold 16px system-ui;padding:12px 20px;border:none;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.5);${style}`;
+  if (text === 'm' || text === 'ft' || text === 'in') {
+    b.style.cssText += 'display:flex;align-items:center;justify-content:center;';
+  }
+  b.addEventListener('click', e => { e.stopPropagation(); fn(); });
+  document.body.appendChild(b);
+  return b;
 }
 
 function toggleUnit() {
@@ -113,7 +117,7 @@ function toggleUnit() {
   else if (currentUnit === 'ft') currentUnit = 'in';
   else currentUnit = 'm';
   unitBtn.textContent = currentUnit;
-  updateAllLabels();
+  refreshAllLabels();
 }
 
 function formatDistance(m) {
@@ -122,31 +126,33 @@ function formatDistance(m) {
   return m.toFixed(2) + ' m';
 }
 
-function onSelect() { if (reticle.visible && !isWallMode) placePointFromReticle(); }
+function onSelect() {
+  if (reticle.visible && !isWallMode) placePointFromReticle();
+}
 
 function onScreenTap(e) {
-  if (!isWallMode || currentChain.points.length >= 20) return;
+  if (!isWallMode) return;
   const x = (e.clientX / window.innerWidth) * 2 - 1;
   const y = -(e.clientY / window.innerHeight) * 2 + 1;
   const vec = new THREE.Vector3(x, y, 0.5).unproject(camera);
   const pos = camera.position.clone().add(vec.sub(camera.position).normalize().multiplyScalar(2.5));
-  addPointToCurrentChain(pos);
+  addPoint(pos);
 }
 
 function placePointFromReticle() {
   const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-  addPointToCurrentChain(p);
+  addPoint(p);
 }
 
-function addPointToCurrentChain(pos) {
+function addPoint(pos) {
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.016), new THREE.MeshBasicMaterial({color:0x00ffaa}));
   dot.position.copy(pos);
   scene.add(dot);
   currentChain.meshes.push(dot);
   currentChain.points.push(pos.clone());
   updateCurrentChain();
-  updateTopInfo();
-  showControls();
+  updateInfo();
+  showButtons();
 }
 
 function undoLastPoint() {
@@ -154,23 +160,20 @@ function undoLastPoint() {
   scene.remove(currentChain.meshes.pop());
   currentChain.points.pop();
   updateCurrentChain();
-  updateTopInfo();
-  showControls();
+  updateInfo();
+  showButtons();
 }
 
 function startNewLine() {
-  // Save current chain if it has at least 2 points
   if (currentChain && currentChain.points.length >= 2) {
-    allChains.push({...currentChain});
+    allChains.push(currentChain);
   }
-  // Start fresh chain
-  currentChain = { points: [], meshes: [], line: null, labels: [], total: 0 };
-  updateTopInfo();
-  showControls();
+  currentChain = { points: [], meshes: [], line: null, labels: [] };
+  updateInfo();
+  showButtons();
 }
 
 function updateCurrentChain() {
-  // Remove old line & labels
   if (currentChain.line) scene.remove(currentChain.line);
   currentChain.labels.forEach(l => scene.remove(l));
   currentChain.labels = [];
@@ -179,116 +182,122 @@ function updateCurrentChain() {
 
   currentChain.line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(currentChain.points),
-    new THREE.LineBasicMaterial({color:0xff0044, linewidth:6})
+    new THREE.LineBasicMaterial({ color: 0xff0044, linewidth: 6 })
   );
   scene.add(currentChain.line);
 
-  let total = 0;
   for (let i = 1; i < currentChain.points.length; i++) {
-    const d = currentChain.points[i-1].distanceTo(currentChain.points[i]);
-    total += d;
+    const dist = currentChain.points[i-1].distanceTo(currentChain.points[i]);
     const mid = new THREE.Vector3().lerpVectors(currentChain.points[i-1], currentChain.points[i], 0.5);
-    const sprite = createLabelSprite(formatDistance(d));
+    const sprite = makeLabel(formatDistance(dist));
     sprite.position.copy(mid);
     scene.add(sprite);
     currentChain.labels.push(sprite);
   }
-  currentChain.total = total;
 }
 
-function updateAllLabels() {
+function makeLabel(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 220; canvas.height = 80;
+  const c = canvas.getContext('2d');
+  c.fillStyle = 'rgba(0,0,0,0.9)';
+  c.fillRect(0,0,220,80);
+  c.fillStyle = '#fff';
+  c.font = 'bold 46px system-ui';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(text, 110, 40);
+
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false })
+  );
+  sprite.scale.set(0.28, 0.11, 1);
+  return sprite;
+}
+
+function refreshAllLabels() {
+  // Update old chains
   allChains.forEach(chain => {
-    chain.labels.forEach(l => l.material.map.dispose());
-    chain.labels.forEach((l, i) => {
+    chain.labels.forEach((spr, i) => {
       const d = chain.points[i].distanceTo(chain.points[i+1]);
-      l.material.map = new THREE.CanvasTexture(createLabelCanvas(formatDistance(d)));
-      l.material.needsUpdate = true;
+      spr.material.map.dispose();
+      spr.material.map = new THREE.CanvasTexture(makeLabelCanvas(formatDistance(d)));
+      spr.material.needsUpdate = true;
     });
   });
-  if (currentChain) updateCurrentChain();
-  updateTopInfo();
+  updateCurrentChain();
+  updateInfo();
 }
 
-function createLabelCanvas(text) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 200; canvas.height = 70;
-  const c = canvas.getContext('2d');
-  c.fillStyle = 'rgba(0,0,0,0.9)'; c.fillRect(0,0,200,70);
-  c.fillStyle = 'white'; c.font = 'bold 42px system-ui';
-  c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(text, 100, 35);
-  return canvas;
+function makeLabelCanvas(text) {
+  const c = document.createElement('canvas');
+  c.width = 220; c.height = 80;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0,0,220,80);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 46px system-ui';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 110, 40);
+  return c;
 }
 
-function createLabelSprite(text) {
-  return new THREE.Sprite(new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(createLabelCanvas(text)),
-    depthTest: false
-  })).scale.set(0.25, 0.1, 1);
+function updateInfo() {
+  const pts = currentChain.points.length;
+  const total = currentChain.points.length < 2 ? 0 :
+    currentChain.points.reduce((sum, p, i) => i === 0 ? 0 : sum + p.distanceTo(currentChain.points[i-1]), 0);
+  infoDiv.innerHTML = pts < 2
+    ? (isWallMode ? `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere` : `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`)
+    : `Total: <span style="color:#ff4444;font-size:26px">${formatDistance(total)}</span> • ${pts} pts`;
 }
 
-function updateTopInfo() {
-  const total = currentChain ? currentChain.total : 0;
-  infoDiv.innerHTML = `Total: <span style="color:#ff4444;font-size:26px">${formatDistance(total)}</span> • ${currentChain.points.length} pts`;
-}
-
-function showControls() {
-  const hasPoints = currentChain.points.length > 0;
-  undoBtn.style.display = hasPoints ? 'block' : 'none';
-  resetBtn.style.display = hasPoints ? 'block' : 'none';
+function showButtons() {
+  const has = currentChain.points.length > 0;
+  undoBtn.style.display = has ? 'block' : 'none';
+  resetBtn.style.display = has ? 'block' : 'none';
   newLineBtn.style.display = (currentChain.points.length >= 2) ? 'block' : 'none';
 }
 
 function resetAll() {
-  allChains.forEach(chain => {
-    chain.meshes.forEach(m => scene.remove(m));
-    if (chain.line) scene.remove(chain.line);
-    chain.labels.forEach(l => scene.remove(l));
+  allChains.forEach(c => {
+    c.meshes.forEach(m => scene.remove(m));
+    if (c.line) scene.remove(c.line);
+    c.labels.forEach(l => scene.remove(l));
   });
   allChains = [];
   startNewLine();
 }
 
-function startWallDetection() {
-  let running = false;
-  const process = () => {
-    if (running || !isWallMode || video.videoWidth === 0) { requestAnimationFrame(process); return; }
-    running = true;
-    const frame = cv.imread(video);
-    const gray = new cv.Mat(); cv.cvtColor(frame, gray, cv.COLOR_RGBA2GRAY);
-    const corners = new cv.KeyPointVector();
-    cv.FAST(gray, corners, 30, true);
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    for (let i = 0; i < corners.size(); i++) {
-      const pt = corners.get(i).pt;
-      ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(pt.x, pt.y, 6, 0, Math.PI*2); ctx.fill();
-    }
-    frame.delete(); gray.delete(); corners.delete();
-    running = false;
-    requestAnimationFrame(process);
-  };
-  process();
-}
-
 function render(t, frame) {
   if (!frame) return;
+
   const session = renderer.xr.getSession();
   if (session && !hitTestSource) {
-    session.requestReferenceSpace('viewer').then(rs => {
-      session.requestHitTestSource({space: rs}).then(s => hitTestSource = s);
+    session.requestReferenceSpace('viewer').then(refSpace => {
+      session.requestHitTestSource({ space: refSpace }).then(source => hitTestSource = source);
     });
   }
+
   if (hitTestSource && frame) {
     const hits = frame.getHitTestResults(hitTestSource);
     if (hits.length > 0) {
-      isWallMode = false; canvas.style.opacity = '0'; reticle.visible = true;
+      // FLOOR / HORIZONTAL SURFACE
+      isWallMode = false;
+      canvas.style.opacity = '0';
+      reticle.visible = true;
       reticle.matrix.fromArray(hits[0].getPose(renderer.xr.getReferenceSpace()).transform.matrix);
+      // Force correct info text on floor
+      if (currentChain.points.length < 2) {
+        infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`;
+      }
     } else {
-      isWallMode = true; canvas.style.opacity = '0.6'; reticle.visible = false;
+      // WALL / VERTICAL SURFACE
+      isWallMode = true;
+      canvas.style.opacity = '0.6';
+      reticle.visible = false;
       if (currentChain.points.length < 2) {
         infoDiv.innerHTML = `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere`;
       }
     }
   }
+
   renderer.render(scene, camera);
 }
