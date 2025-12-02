@@ -1,4 +1,4 @@
-// js/app.js — FINAL: Only ONE Stop AR button + Clean UI
+// js/app.js — Updated for Vertical Plane Detection (Dec 2025)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -25,7 +25,7 @@ function init() {
   infoDiv.style.cssText = `
     position:fixed; top:16px; left:50%; transform:translateX(-50%);
     background:rgba(0,0,0,0.75); color:white; padding:10px 24px;
-    border-radius:20px; font:bold 11px system-ui; z-index:999; pointer-events:none;
+    border-radius:16px; font:bold 19px system-ui; z-index:999; pointer-events:none;
   `;
   infoDiv.textContent = "Move phone → look for green ring → tap to place point";
   document.body.appendChild(infoDiv);
@@ -34,27 +34,27 @@ function init() {
   resetBtn = document.createElement('button');
   resetBtn.textContent = "Reset";
   resetBtn.style.cssText = `
-    position:fixed; top:30px; right:20px;
-    padding:14px 24px; font-size:17px; font-weight:bold;
+    position:fixed; bottom:30px; left:20px;
+    padding:14px 28px; font-size:17px; font-weight:bold;
     background:#ff3333; color:white; border:none; border-radius:14px;
     box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999; display:none;
   `;
   resetBtn.onclick = resetAll;
   document.body.appendChild(resetBtn);
 
-  // // OUR OWN Stop AR Button — Bottom Right (this is the only one we want)
-  // stopBtn = document.createElement('button');
-  // stopBtn.textContent = "Stop AR";
-  // stopBtn.style.cssText = `
-  //   position:fixed; bottom:30px; right:20px;
-  //   padding:14px 28px; font-size:17px; font-weight:bold;
-  //   background:#333; color:white; border:none; border-radius:14px;
-  //   box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999;
-  // `;
-  // stopBtn.onclick = () => renderer.xr.getSession()?.end();
-  // document.body.appendChild(stopBtn);
+  // Stop AR Button — Bottom Right
+  stopBtn = document.createElement('button');
+  stopBtn.textContent = "Stop AR";
+  stopBtn.style.cssText = `
+    position:fixed; bottom:30px; right:20px;
+    padding:14px 28px; font-size:17px; font-weight:bold;
+    background:#333; color:white; border:none; border-radius:14px;
+    box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:999;
+  `;
+  stopBtn.onclick = () => renderer.xr.getSession()?.end();
+  document.body.appendChild(stopBtn);
 
-  // Create START AR button
+  // START AR Button
   const arButton = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -63,7 +63,7 @@ function init() {
   arButton.classList.add('custom-ar-button');
   document.body.appendChild(arButton);
 
-  // CRITICAL: Remove ALL default Three.js buttons (including duplicate STOP AR)
+  // Remove default Three.js buttons
   arButton.addEventListener('click', () => {
     setTimeout(() => {
       document.querySelectorAll('button').forEach(btn => {
@@ -93,7 +93,6 @@ function init() {
   renderer.setAnimationLoop(render);
 }
 
-// Rest of your code stays 100% the same
 function onSelect() {
   if (!reticle.visible) return;
   const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
@@ -163,16 +162,31 @@ function render(t, frame) {
   if (!frame) return;
   const session = renderer.xr.getSession();
   if (session && !hitTestSource) {
-    session.requestReferenceSpace('viewer').then(refSpace => {
-      session.requestHitTestSource({space: refSpace}).then(source => hitTestSource = source);
+    session.requestReferenceSpace('local').then(refSpace => {
+      session.requestHitTestSource({ space: refSpace }).then(source => {
+        hitTestSource = source;
+      });
     });
   }
   if (hitTestSource && frame) {
     const hits = frame.getHitTestResults(hitTestSource);
-    reticle.visible = hits.length > 0;
     if (hits.length > 0) {
-      const pose = hits[0].getPose(renderer.xr.getReferenceSpace());
-      reticle.matrix.fromArray(pose.transform.matrix);
+      const hit = hits[0].getPose(renderer.xr.getReferenceSpace());
+      const normal = new THREE.Vector3();
+      const position = new THREE.Vector3().setFromMatrixPosition(hit.transform.matrix);
+      normal.setFromMatrixColumn(hit.transform.matrix, 2).normalize(); // Extract normal from transform matrix
+
+      // Check if surface is near-vertical (e.g., wall)
+      const angleWithVertical = Math.abs(normal.angleTo(new THREE.Vector3(0, 1, 0)) * (180 / Math.PI));
+      reticle.visible = true; // Show reticle on any detected plane
+      if (angleWithVertical > 45 && angleWithVertical < 135) {
+        reticle.material.color.setHex(0x00ff00); // Green for vertical surfaces
+      } else {
+        reticle.material.color.setHex(0x0000ff); // Blue for horizontal surfaces
+      }
+      reticle.matrix.fromArray(hit.transform.matrix);
+    } else {
+      reticle.visible = false;
     }
   }
   renderer.render(scene, camera);
