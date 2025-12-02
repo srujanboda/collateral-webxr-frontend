@@ -1,4 +1,4 @@
-// js/app.js — FINAL WITH UNDO + UNIT SWITCH (m ↔ ft ↔ in)
+// js/app.js — FINAL: Unit Button Moved to Bottom-Center (No Overlap!)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -23,7 +23,7 @@ async function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Top info bar
+  // Top info
   infoDiv = document.createElement('div');
   infoDiv.style.cssText = `
     position:fixed; top:16px; left:50%; transform:translateX(-50%);
@@ -35,7 +35,7 @@ async function init() {
 
   // UNDO BUTTON (top-left)
   undoBtn = document.createElement('button');
-  undoBtn.innerHTML = '↺'; // reverse arrow
+  undoBtn.innerHTML = '↺';
   undoBtn.style.cssText = `
     position:fixed; top:20px; left:20px; z-index:999;
     width:56px; height:56px; border-radius:50%;
@@ -46,19 +46,20 @@ async function init() {
   undoBtn.onclick = undoLastPoint;
   document.body.appendChild(undoBtn);
 
-  // UNIT TOGGLE BUTTON (top-center)
+  // UNIT TOGGLE – MOVED TO BOTTOM-CENTER (SAFE ZONE)
   unitBtn = document.createElement('button');
   unitBtn.textContent = 'm';
   unitBtn.style.cssText = `
-    position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:999;
-    padding:12px 24px; border-radius:30px; background:#0066ff; color:white;
-    font:bold 18px system-ui; border:none; box-shadow:0 6px 20px rgba(0,102,255,0.4);
+    position:fixed; bottom:90px; left:50%; transform:translateX(-50%); z-index:9999;
+    padding:16px 32px; border-radius:40px; background:#0066ff; color:white;
+    font:bold 22px system-ui; border:none; box-shadow:0 8px 30px rgba(0,102,255,0.5);
+    min-width:120px;
   `;
   unitBtn.onclick = () => {
     if (currentUnit === 'm') { currentUnit = 'ft'; unitBtn.textContent = 'ft'; }
     else if (currentUnit === 'ft') { currentUnit = 'in'; unitBtn.textContent = 'in'; }
     else { currentUnit = 'm'; unitBtn.textContent = 'm'; }
-    updateAll(); // refresh labels
+    updateAll();
   };
   document.body.appendChild(unitBtn);
 
@@ -73,7 +74,7 @@ async function init() {
   resetBtn.onclick = resetAll;
   document.body.appendChild(resetBtn);
 
-  // START AR + rest of setup (same as before)
+  // START AR + rest unchanged...
   const arButton = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -82,7 +83,6 @@ async function init() {
   arButton.classList.add('custom-ar-button');
   document.body.appendChild(arButton);
 
-  // Remove duplicate buttons
   arButton.addEventListener('click', () => {
     setTimeout(() => {
       document.querySelectorAll('button').forEach(b => {
@@ -91,20 +91,19 @@ async function init() {
     }, 800);
   });
 
-  // Video + Canvas for wall mode (same as before)
+  // Video + Canvas setup (same)
   video = document.createElement('video');
-  video.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; object-fit:cover; opacity:0; z-index:-1;';
+  video.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:-1;';
   video.autoplay = video.playsInline = video.muted = true;
   document.body.appendChild(video);
 
   canvas = document.createElement('canvas');
-  canvas.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; opacity:0; z-index:998;';
+  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0;z-index:998;';
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
 
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(stream => { video.srcObject = stream; video.play(); })
-    .catch(() => {});
+    .then(s => { video.srcObject = s; video.play(); }).catch(() => {});
 
   if (typeof cv !== 'undefined') onOpenCVReady();
   window.onOpenCVReady = () => { if (video.videoWidth) startWallDetection(); };
@@ -122,23 +121,21 @@ async function init() {
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
-
   renderer.domElement.addEventListener('click', onScreenTap);
   renderer.setAnimationLoop(render);
 }
 
-// Convert meters to current unit
+// ← ALL OTHER FUNCTIONS (formatDistance, onSelect, onScreenTap, placePointFromReticle,
+// undoLastPoint, updateAll, resetAll, startWallDetection, render) 
+// → REMAIN EXACTLY THE SAME AS IN PREVIOUS VERSION
+
 function formatDistance(meters) {
   if (currentUnit === 'ft') return (meters * 3.28084).toFixed(2) + ' ft';
   if (currentUnit === 'in') return (meters * 39.3701).toFixed(1) + ' in';
   return meters.toFixed(2) + ' m';
 }
 
-function onSelect() {
-  if (reticle.visible && !isWallMode) {
-    placePointFromReticle();
-  }
-}
+function onSelect() { if (reticle.visible && !isWallMode) placePointFromReticle(); }
 
 function onScreenTap(e) {
   if (isWallMode && points.length < 20) {
@@ -146,13 +143,10 @@ function onScreenTap(e) {
     const y = -(e.clientY / window.innerHeight) * 2 + 1;
     const vec = new THREE.Vector3(x, y, 0.5).unproject(camera);
     const dir = vec.sub(camera.position).normalize();
-    const pos = camera.position.clone().add(dir.multiplyScalar(2.5)); // ~2.5m in front
-
+    const pos = camera.position.clone().add(dir.multiplyScalar(2.5));
     const dot = new THREE.Mesh(new THREE.SphereGeometry(0.016), new THREE.MeshBasicMaterial({color:0x00ffaa}));
-    dot.position.copy(pos);
-    scene.add(dot);
-    pointMeshes.push(dot);
-    points.push(pos.clone());
+    dot.position.copy(pos); scene.add(dot);
+    pointMeshes.push(dot); points.push(pos.clone());
     updateAll();
   }
 }
@@ -160,32 +154,27 @@ function onScreenTap(e) {
 function placePointFromReticle() {
   const p = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.016), new THREE.MeshBasicMaterial({color:0x00ffaa}));
-  dot.position.copy(p);
-  scene.add(dot);
-  pointMeshes.push(dot);
-  points.push(p.clone());
+  dot.position.copy(p); scene.add(dot);
+  pointMeshes.push(dot); points.push(p.clone());
   updateAll();
 }
 
 function undoLastPoint() {
   if (points.length === 0) return;
-  const lastMesh = pointMeshes.pop();
-  scene.remove(lastMesh);
+  scene.remove(pointMeshes.pop());
   points.pop();
   updateAll();
 }
 
 function updateAll() {
   if (line) scene.remove(line);
-  labels.forEach(l => scene.remove(l));
-  labels = [];
+  labels.forEach(l => scene.remove(l)); labels = [];
 
-  undoBtn.style.display = points.length > 0 ? 'block' : 'none';
-  resetBtn.style.display = points.length > 0 ? 'block' : 'none';
+  undoBtn.style.display = resetBtn.style.display = points.length > 0 ? 'block' : 'none';
 
   if (points.length < 2) {
     infoDiv.innerHTML = isWallMode 
-      ? `<span style="color:#00ffff">WALL MODE</span> – Tap to place` 
+      ? `<span style="color:#00ffff">WALL MODE</span> – Tap to place`
       : `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`;
     return;
   }
@@ -199,40 +188,33 @@ function updateAll() {
     totalMeters += d;
 
     const mid = new THREE.Vector3().lerpVectors(points[i-1], points[i], 0.5);
-    const canvas2d = document.createElement('canvas');
-    const c = canvas2d.getContext('2d');
-    canvas2d.width = 200; canvas2d.height = 70;
-    c.fillStyle = 'rgba(0,0,0,0.9)';
-    c.fillRect(0,0,200,70);
-    c.fillStyle = '#fff';
-    c.font = 'bold 42px system-ui';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
+    const cnv = document.createElement('canvas');
+    const c = cnv.getContext('2d');
+    cnv.width = 200; cnv.height = 70;
+    c.fillStyle = 'rgba(0,0,0,0.9)'; c.fillRect(0,0,200,70);
+    c.fillStyle = '#fff'; c.font = 'bold 42px system-ui';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(formatDistance(d), 100, 35);
 
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(canvas2d), depthTest:false}));
-    sprite.position.copy(mid);
-    sprite.scale.set(0.25, 0.1, 1);
-    scene.add(sprite);
-    labels.push(sprite);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cnv), depthTest:false}));
+    sprite.position.copy(mid); sprite.scale.set(0.25, 0.1, 1);
+    scene.add(sprite); labels.push(sprite);
   }
 
   infoDiv.innerHTML = `Total: <span style="color:#ff4444;font-size:26px">${formatDistance(totalMeters)}</span> • ${points.length} pts`;
 }
 
 function resetAll() {
-  points.forEach(p => scene.remove(pointMeshes.shift()));
-  points = [];
-  if (line) scene.remove(line);
-  labels.forEach(l => scene.remove(l));
-  labels = []; line = null;
+  points.forEach(() => scene.remove(pointMeshes.shift()));
+  points = []; if (line) scene.remove(line);
+  labels.forEach(l => scene.remove(l)); labels = []; line = null;
   undoBtn.style.display = resetBtn.style.display = 'none';
   infoDiv.innerHTML = isWallMode ? `<span style="color:#00ffff">WALL MODE</span>` : `Total: 0.00 ${currentUnit}`;
 }
 
 function startWallDetection() {
   let running = false;
-  function process() {
+  const process = () => {
     if (running || !isWallMode || video.videoWidth === 0) { requestAnimationFrame(process); return; }
     running = true;
     const frame = cv.imread(video);
@@ -243,15 +225,13 @@ function startWallDetection() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
     for (let i = 0; i < corners.size(); i++) {
       const pt = corners.get(i).pt;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 6, 0, Math.PI*2);
-      ctx.fillStyle = '#00ffff';
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 6, 0, Math.PI*2);
+      ctx.fillStyle = '#00ffff'; ctx.fill();
     }
     frame.delete(); gray.delete(); corners.delete();
     running = false;
     if (isWallMode) requestAnimationFrame(process);
-  }
+  };
   process();
 }
 
@@ -263,19 +243,13 @@ function render(t, frame) {
       session.requestHitTestSource({space: rs}).then(s => hitTestSource = s);
     });
   }
-
   if (hitTestSource && frame) {
     const hits = frame.getHitTestResults(hitTestSource);
     if (hits.length > 0) {
-      isWallMode = false;
-      canvas.style.opacity = '0';
-      reticle.visible = true;
-      const pose = hits[0].getPose(renderer.xr.getReferenceSpace());
-      reticle.matrix.fromArray(pose.transform.matrix);
+      isWallMode = false; canvas.style.opacity = '0'; reticle.visible = true;
+      reticle.matrix.fromArray(hits[0].getPose(renderer.xr.getReferenceSpace()).transform.matrix);
     } else {
-      isWallMode = true;
-      canvas.style.opacity = '0.6';
-      reticle.visible = false;
+      isWallMode = true; canvas.style.opacity = '0.6'; reticle.visible = false;
       infoDiv.innerHTML = `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere`;
     }
   }
