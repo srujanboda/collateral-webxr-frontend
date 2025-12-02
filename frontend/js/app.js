@@ -1,4 +1,4 @@
-// js/app.js — FINAL: Unit Button Moved to Bottom-Center (No Overlap!)
+// js/app.js — FIXED: No extra dots on button clicks + Total always shown when measuring
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -43,30 +43,24 @@ async function init() {
     font-size:28px; box-shadow:0 6px 20px rgba(0,0,0,0.6);
     display:none;
   `;
-  undoBtn.onclick = undoLastPoint;
+  undoBtn.onclick = (e) => {
+    e.stopPropagation(); // Prevent triggering tap
+    undoLastPoint();
+  };
   document.body.appendChild(undoBtn);
 
-   // UNIT TOGGLE – TOP-LEFT, BELOW UNDO BUTTON (PERFECT SAFE SPOT)
+  // UNIT TOGGLE – TOP-LEFT, BELOW UNDO
   unitBtn = document.createElement('button');
   unitBtn.textContent = 'm';
   unitBtn.style.cssText = `
-    position:fixed;
-    top:90px;                  /* 20px top + 56px undo height + 14px gap */
-    left:20px;
-    z-index:9999;
-    width:56px;
-    height:56px;
-    border-radius:50%;
-    background:#0066ff;
-    color:white;
-    border:none;
-    font:bold 20px system-ui;
-    box-shadow:0 8px 25px rgba(0,102,255,0.5);
-    display:flex;
-    align-items:center;
-    justify-content:center;
+    position:fixed; top:90px; left:20px; z-index:9999;
+    width:56px; height:56px; border-radius:50%;
+    background:#0066ff; color:white; border:none;
+    font:bold 20px system-ui; box-shadow:0 8px 25px rgba(0,102,255,0.5);
+    display:flex; align-items:center; justify-content:center;
   `;
-  unitBtn.onclick = () => {
+  unitBtn.onclick = (e) => {
+    e.stopPropagation(); // Prevent triggering tap
     if (currentUnit === 'm') { currentUnit = 'ft'; unitBtn.textContent = 'ft'; }
     else if (currentUnit === 'ft') { currentUnit = 'in'; unitBtn.textContent = 'in'; }
     else { currentUnit = 'm'; unitBtn.textContent = 'm'; }
@@ -82,7 +76,10 @@ async function init() {
     padding:12px 24px; font:bold 16px system-ui; background:#ff3333; color:white;
     border:none; border-radius:14px; box-shadow:0 6px 20px rgba(0,0,0,0.5); display:none;
   `;
-  resetBtn.onclick = resetAll;
+  resetBtn.onclick = (e) => {
+    e.stopPropagation(); // Prevent triggering tap
+    resetAll();
+  };
   document.body.appendChild(resetBtn);
 
   // START AR + rest unchanged...
@@ -136,10 +133,6 @@ async function init() {
   renderer.setAnimationLoop(render);
 }
 
-// ← ALL OTHER FUNCTIONS (formatDistance, onSelect, onScreenTap, placePointFromReticle,
-// undoLastPoint, updateAll, resetAll, startWallDetection, render) 
-// → REMAIN EXACTLY THE SAME AS IN PREVIOUS VERSION
-
 function formatDistance(meters) {
   if (currentUnit === 'ft') return (meters * 3.28084).toFixed(2) + ' ft';
   if (currentUnit === 'in') return (meters * 39.3701).toFixed(1) + ' in';
@@ -185,7 +178,7 @@ function updateAll() {
 
   if (points.length < 2) {
     infoDiv.innerHTML = isWallMode 
-      ? `<span style="color:#00ffff">WALL MODE</span> – Tap to place`
+      ? `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere`
       : `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`;
     return;
   }
@@ -197,7 +190,6 @@ function updateAll() {
   for (let i = 1; i < points.length; i++) {
     const d = points[i-1].distanceTo(points[i]);
     totalMeters += d;
-
     const mid = new THREE.Vector3().lerpVectors(points[i-1], points[i], 0.5);
     const cnv = document.createElement('canvas');
     const c = cnv.getContext('2d');
@@ -206,7 +198,6 @@ function updateAll() {
     c.fillStyle = '#fff'; c.font = 'bold 42px system-ui';
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(formatDistance(d), 100, 35);
-
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cnv), depthTest:false}));
     sprite.position.copy(mid); sprite.scale.set(0.25, 0.1, 1);
     scene.add(sprite); labels.push(sprite);
@@ -220,7 +211,7 @@ function resetAll() {
   points = []; if (line) scene.remove(line);
   labels.forEach(l => scene.remove(l)); labels = []; line = null;
   undoBtn.style.display = resetBtn.style.display = 'none';
-  infoDiv.innerHTML = isWallMode ? `<span style="color:#00ffff">WALL MODE</span>` : `Total: 0.00 ${currentUnit}`;
+  infoDiv.innerHTML = isWallMode ? `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere` : `Total: 0.00 ${currentUnit}`;
 }
 
 function startWallDetection() {
@@ -261,7 +252,7 @@ function render(t, frame) {
       reticle.matrix.fromArray(hits[0].getPose(renderer.xr.getReferenceSpace()).transform.matrix);
     } else {
       isWallMode = true; canvas.style.opacity = '0.6'; reticle.visible = false;
-      infoDiv.innerHTML = `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere`;
+      infoDiv.innerHTML = points.length >= 2 ? infoDiv.innerHTML : `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere`; // FIXED: Show total if measuring
     }
   }
   renderer.render(scene, camera);
