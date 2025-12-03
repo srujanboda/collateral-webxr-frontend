@@ -308,6 +308,15 @@ const callStatus = document.getElementById('call-status');
 const remoteVideoContainer = document.getElementById('remote-video-container');
 const remoteVideo = document.getElementById('remote-video');
 const closeRemoteBtn = document.getElementById('close-remote-btn');
+const toggleVideoUiBtn = document.getElementById('toggle-video-ui');
+const videoUiContent = document.getElementById('video-ui-content');
+
+let isUiCollapsed = false;
+toggleVideoUiBtn.addEventListener('click', () => {
+  isUiCollapsed = !isUiCollapsed;
+  videoUiContent.style.display = isUiCollapsed ? 'none' : 'block';
+  toggleVideoUiBtn.textContent = isUiCollapsed ? '+' : '−';
+});
 
 joinUserBtn.addEventListener('click', () => initPeer('user'));
 joinReviewerBtn.addEventListener('click', () => initPeer('reviewer'));
