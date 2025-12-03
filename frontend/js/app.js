@@ -34,14 +34,14 @@ async function init() {
   document.body.appendChild(infoDiv);
 
   // BUTTONS — NEW POSITIONS
-  undoBtn    = createBtn('↺', 'bottom:100px;right:20px;width:48px;height:48px;border-radius:50%;background:#333;font-size:24px;', undoLastPoint);
-  unitBtn    = createBtn('m', 'top:90px;left:20px;width:48px;height:48px;border-radius:50%;background:#0066ff;', toggleUnit);
-  
+  undoBtn = createBtn('↺', 'bottom:100px;right:20px;width:48px;height:48px;border-radius:50%;background:#333;font-size:24px;', undoLastPoint);
+  unitBtn = createBtn('m', 'top:90px;left:20px;width:48px;height:48px;border-radius:50%;background:#0066ff;', toggleUnit);
+
   // New Line → TOP-RIGHT
   newLineBtn = createBtn('New Line', 'top:20px;right:20px;background:#444;padding:10px 18px;font-size:14px;border-radius:18px;', startNewLine);
-  
+
   // Reset → BOTTOM-LEFT
-  resetBtn   = createBtn('Reset', 'bottom:100px;left:20px;background:#ff3333;padding:10px 18px;font-size:14px;border-radius:18px;', resetAll);
+  resetBtn = createBtn('Reset', 'bottom:100px;left:20px;background:#ff3333;padding:10px 18px;font-size:14px;border-radius:18px;', resetAll);
 
   [undoBtn, newLineBtn, resetBtn].forEach(b => b.style.display = 'none');
 
@@ -73,7 +73,7 @@ async function init() {
 
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(s => { video.srcObject = s; video.play(); })
-    .catch(() => {});
+    .catch(() => { });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
@@ -142,7 +142,7 @@ function placePointFromReticle() {
 }
 
 function addPoint(pos) {
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.016), new THREE.MeshBasicMaterial({color:0x00ffaa}));
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.016), new THREE.MeshBasicMaterial({ color: 0x00ffaa }));
   dot.position.copy(pos);
   scene.add(dot);
   currentChain.meshes.push(dot);
@@ -183,8 +183,8 @@ function updateCurrentChain() {
   scene.add(currentChain.line);
 
   for (let i = 1; i < currentChain.points.length; i++) {
-    const dist = currentChain.points[i-1].distanceTo(currentChain.points[i]);
-    const mid = new THREE.Vector3().lerpVectors(currentChain.points[i-1], currentChain.points[i], 0.5);
+    const dist = currentChain.points[i - 1].distanceTo(currentChain.points[i]);
+    const mid = new THREE.Vector3().lerpVectors(currentChain.points[i - 1], currentChain.points[i], 0.5);
     const sprite = makeLabel(formatDistance(dist));
     sprite.position.copy(mid);
     scene.add(sprite);
@@ -197,7 +197,7 @@ function makeLabel(text) {
   canvas.width = 220; canvas.height = 80;
   const c = canvas.getContext('2d');
   c.fillStyle = 'rgba(0,0,0,0.9)';
-  c.fillRect(0,0,220,80);
+  c.fillRect(0, 0, 220, 80);
   c.fillStyle = '#fff';
   c.font = 'bold 46px system-ui';
   c.textAlign = 'center';
@@ -213,7 +213,7 @@ function makeLabel(text) {
 function refreshAllLabels() {
   allChains.forEach(chain => {
     chain.labels.forEach((spr, i) => {
-      const d = chain.points[i].distanceTo(chain.points[i+1]);
+      const d = chain.points[i].distanceTo(chain.points[i + 1]);
       spr.material.map.dispose();
       spr.material.map = new THREE.CanvasTexture(makeLabelCanvas(formatDistance(d)));
       spr.material.needsUpdate = true;
@@ -227,7 +227,7 @@ function makeLabelCanvas(text) {
   const c = document.createElement('canvas');
   c.width = 220; c.height = 80;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0,0,220,80);
+  ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0, 0, 220, 80);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 46px system-ui';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(text, 110, 40);
@@ -236,7 +236,7 @@ function makeLabelCanvas(text) {
 
 function updateInfo() {
   const pts = currentChain.points.length;
-  const total = pts < 2 ? 0 : currentChain.points.reduce((s, p, i) => i === 0 ? 0 : s + p.distanceTo(currentChain.points[i-1]), 0);
+  const total = pts < 2 ? 0 : currentChain.points.reduce((s, p, i) => i === 0 ? 0 : s + p.distanceTo(currentChain.points[i - 1]), 0);
   infoDiv.innerHTML = pts < 2
     ? (isWallMode ? `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere` : `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`)
     : `Total: <span style="color:#ff4444;font-size:26px">${formatDistance(total)}</span> • ${pts} pts`;
@@ -287,4 +287,133 @@ function render(t, frame) {
     }
   }
   renderer.render(scene, camera);
+}
+
+// --- VIDEO CALL LOGIC ---
+let peer = null;
+let myPeerId = null;
+let currentCall = null;
+let localStream = null;
+let role = null; // 'user' or 'reviewer'
+
+const remoteIdInput = document.getElementById('remote-id');
+const joinUserBtn = document.getElementById('join-user-btn');
+const joinReviewerBtn = document.getElementById('join-reviewer-btn');
+const myIdDisplay = document.getElementById('my-id-display');
+const callPanel = document.getElementById('call-panel');
+const connectionPanel = document.getElementById('connection-panel');
+const startCallBtn = document.getElementById('start-call-btn');
+const endCallBtn = document.getElementById('end-call-btn');
+const callStatus = document.getElementById('call-status');
+const remoteVideoContainer = document.getElementById('remote-video-container');
+const remoteVideo = document.getElementById('remote-video');
+const closeRemoteBtn = document.getElementById('close-remote-btn');
+
+joinUserBtn.addEventListener('click', () => initPeer('user'));
+joinReviewerBtn.addEventListener('click', () => initPeer('reviewer'));
+startCallBtn.addEventListener('click', startCall);
+endCallBtn.addEventListener('click', endCall);
+closeRemoteBtn.addEventListener('click', () => {
+  remoteVideoContainer.style.display = 'none';
+  remoteVideo.srcObject = null;
+});
+
+function initPeer(selectedRole) {
+  role = selectedRole;
+  peer = new Peer(); // Auto-generate ID
+
+  peer.on('open', (id) => {
+    myPeerId = id;
+    myIdDisplay.textContent = `My ID: ${id}`;
+    connectionPanel.style.display = 'none';
+    callPanel.style.display = 'block';
+
+    if (role === 'reviewer') {
+      callStatus.textContent = "Waiting for call...";
+      startCallBtn.style.display = 'none'; // Reviewer waits
+    } else {
+      callStatus.textContent = "Ready to call";
+      startCallBtn.style.display = 'block'; // User initiates
+    }
+  });
+
+  peer.on('call', (call) => {
+    if (role === 'reviewer') {
+      // Answer automatically or prompt? Let's answer automatically for now
+      callStatus.textContent = "Incoming call...";
+      call.answer(); // Answer without stream (receive only)
+      handleStream(call);
+    } else {
+      // User receiving call? Unlikely in this flow, but possible
+      call.answer();
+      handleStream(call);
+    }
+  });
+
+  peer.on('error', (err) => {
+    console.error(err);
+    callStatus.textContent = "Error: " + err.type;
+  });
+}
+
+async function startCall() {
+  const remoteId = remoteIdInput.value.trim();
+  if (!remoteId) {
+    alert("Please enter the Reviewer's ID");
+    return;
+  }
+
+  try {
+    callStatus.textContent = "Getting screen stream...";
+    // Try to get screen share to show AR content
+    localStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: "always" },
+      audio: true
+    });
+
+    // Handle stream end (user stops sharing)
+    localStream.getVideoTracks()[0].onended = () => endCall();
+
+    callStatus.textContent = "Calling...";
+    const call = peer.call(remoteId, localStream);
+    handleStream(call);
+
+  } catch (err) {
+    console.error("Failed to get stream", err);
+    callStatus.textContent = "Stream failed: " + err.message;
+    // Fallback to camera?
+    // localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  }
+}
+
+function handleStream(call) {
+  currentCall = call;
+
+  call.on('stream', (remoteStream) => {
+    if (role === 'reviewer') {
+      remoteVideoContainer.style.display = 'block';
+      remoteVideo.srcObject = remoteStream;
+      callStatus.textContent = "Connected (Viewing)";
+    } else {
+      callStatus.textContent = "Connected (Sharing)";
+    }
+  });
+
+  call.on('close', () => {
+    endCall();
+  });
+}
+
+function endCall() {
+  if (currentCall) {
+    currentCall.close();
+    currentCall = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  remoteVideoContainer.style.display = 'none';
+  remoteVideo.srcObject = null;
+  callStatus.textContent = role === 'reviewer' ? "Waiting for call..." : "Ready to call";
 }
