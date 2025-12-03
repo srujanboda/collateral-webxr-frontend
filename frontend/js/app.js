@@ -1,4 +1,4 @@
-// js/app.js — ULTIMATE FINAL VERSION (Clean + Icon + Perfect UX)
+// js/app.js — FINAL LEGENDARY VERSION (Mini-Map + Height Mode)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -7,11 +7,12 @@ let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
 let allChains = [];
 let currentChain = null;
+let isWallMode = false;
+let currentUnit = 'm';
 let heightMode = false;
 let heightBasePoint = null;
 let heightLine = null;
 let heightLabel = null;
-let currentUnit = 'm';
 
 // Mini-Map
 let miniMapVisible = true;
@@ -34,33 +35,20 @@ function init() {
   // Top info
   infoDiv = document.createElement('div');
   infoDiv.style.cssText = `position:fixed;top:16px;left:50%;transform:translateX(-50%);
-    background:rgba(0,0,0,0.85);color:white;padding:14px 36px;border-radius:22px;
-    font:bold 21px system-ui;z-index:999;pointer-events:none;`;
+    background:rgba(0,0,0,0.85);color:white;padding:12px 32px;border-radius:20px;
+    font:bold 20px system-ui;z-index:999;pointer-events:none;`;
+  infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 m</span> • 0 pts`;
   document.body.appendChild(infoDiv);
 
-  // Buttons — Clean & Beautiful
-  undoBtn    = createBtn('↺', 'bottom:100px;left:20px;', undoLastPoint);           // Bottom-left
-  unitBtn    = createBtn('m',  'top:90px;left:20px;', toggleUnit);
-  newLineBtn = createBtn('New Line', 'bottom:100px;right:20px;', startNewLine);
-  resetBtn   = createBtn('Reset', 'top:20px;right:20px;', resetAll);
-  miniMapBtn = createBtn('Map', 'top:20px;right:90px;', () => {
-    miniMapVisible = !miniMapVisible;
-    miniMapCanvas.style.display = miniMapVisible ? 'block' : 'none';
-  });
+  // Buttons
+  undoBtn    = createBtn('↺', 'top:20px;left:20px;width:56px;height:56px;border-radius:50%;background:#333;font-size:28px;', undoLastPoint);
+  unitBtn    = createBtn('m', 'top:90px;left:20px;width:56px;height:56px;border-radius:50%;background:#0066ff;', toggleUnit);
+  newLineBtn = createBtn('New Line', 'bottom:100px;right:20px;background:#444;', startNewLine);
+  resetBtn   = createBtn('Reset', 'top:20px;right:20px;background:#ff3333;', resetAll);
+  heightBtn  = createBtn('Height', 'bottom:160px;right:20px;background:#00aa44;', toggleHeightMode);
+  miniMapBtn = createBtn('Map', 'top:20px;right:90px;background:#222;', () => { miniMapVisible = !miniMapVisible; miniMapCanvas.style.display = miniMapVisible ? 'block' : 'none'; });
 
-  // Height Mode Button with ICON (up arrow)
-  heightBtn = document.createElement('button');
-  heightBtn.innerHTML = '↑';  // Beautiful height icon
-  heightBtn.style.cssText = `
-    position:fixed;bottom:160px;right:20px;z-index:9999;
-    width:64px;height:64px;border-radius:50%;border:none;
-    background:#00aa44;color:white;font-size:36px;font-weight:bold;
-    box-shadow:0 8px 30px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;
-  `;
-  heightBtn.addEventListener('click', e => { e.stopPropagation(); toggleHeightMode(); });
-  document.body.appendChild(heightBtn);
-
-  [undoBtn, newLineBtn, resetBtn].forEach(b => b.style.display = 'none');
+  [undoBtn, newLineBtn, resetBtn, heightBtn].forEach(b => b.style.display = 'none');
 
   // AR Button
   const arButton = ARButton.createButton(renderer, {
@@ -76,8 +64,10 @@ function init() {
     }), 1000);
   });
 
+  // Lighting
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
+  // Reticle
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0x00ff88 })
@@ -87,15 +77,19 @@ function init() {
   scene.add(reticle);
 
   controller = renderer.xr.getController(0);
-  controller.addEventListener('select', () => {
-    if (reticle.visible && !heightMode) placePointFromReticle();
-  });
+  controller.addEventListener('select', onSelect);
   scene.add(controller);
 
   renderer.domElement.addEventListener('click', e => {
     if (e.target !== renderer.domElement) return;
     if (heightMode && heightBasePoint) {
       finishHeightMeasurement();
+    } else if (isWallMode) {
+      const x = (e.clientX / window.innerWidth) * 2 - 1;
+      const y = -(e.clientY / window.innerHeight) * 2 + 1;
+      const vec = new THREE.Vector3(x, y, 0.5).unproject(camera);
+      const pos = camera.position.clone().add(vec.sub(camera.position).normalize().multiplyScalar(2.5));
+      addPoint(pos);
     } else if (reticle.visible && !heightMode) {
       placePointFromReticle();
     }
@@ -104,25 +98,19 @@ function init() {
   setupMiniMap();
   renderer.setAnimationLoop(render);
   startNewLine();
-  updateInfo();
 }
 
-function createBtn(text, posStyle, fn) {
+function createBtn(text, style, fn) {
   const b = document.createElement('button');
   b.textContent = text;
-  b.style.cssText = `
-    position:fixed;z-index:9999;color:white;border:none;
-    box-shadow:0 8px 30px rgba(0,0,0,0.6);font:bold 18px system-ui;
-    padding:14px 24px;border-radius:18px;background:#444;
-    ${posStyle}
-  `;
+  b.style.cssText = `position:fixed;z-index:9999;color:white;border:none;box-shadow:0 8px 30px rgba(0,0,0,0.6);
+    font:bold 16px system-ui;padding:14px 22px;border-radius:18px;${style}`;
   if (text.length <= 3) {
     b.style.width = b.style.height = '56px';
     b.style.borderRadius = '50%';
     b.style.display = 'flex';
     b.style.alignItems = 'center';
     b.style.justifyContent = 'center';
-    b.style.background = text === '↺' ? '#333' : '#0066ff';
   }
   b.addEventListener('click', e => { e.stopPropagation(); fn(); });
   document.body.appendChild(b);
@@ -140,6 +128,10 @@ function formatDistance(m) {
   if (currentUnit === 'ft') return (m * 3.28084).toFixed(2) + ' ft';
   if (currentUnit === 'in') return (m * 39.3701).toFixed(1) + ' in';
   return m.toFixed(2) + ' m';
+}
+
+function onSelect() {
+  if (reticle.visible && !isWallMode && !heightMode) placePointFromReticle();
 }
 
 function placePointFromReticle() {
@@ -188,9 +180,9 @@ function startNewLine() {
 function toggleHeightMode() {
   heightMode = !heightMode;
   heightBtn.style.background = heightMode ? '#00ff88' : '#00aa44';
-  heightBtn.innerHTML = heightMode ? '✓' : '↑';  // Checkmark when active
+  heightBtn.textContent = heightMode ? 'Done' : 'Height';
   if (!heightMode) cancelHeightMeasurement();
-  updateInfo();
+  infoDiv.innerHTML = heightMode ? 'Tap floor to start height' : infoDiv.innerHTML;
 }
 
 function startHeightMeasurement(pos) {
@@ -198,25 +190,30 @@ function startHeightMeasurement(pos) {
   const baseDot = new THREE.Mesh(new THREE.SphereGeometry(0.02), new THREE.MeshBasicMaterial({color:0x00ff00}));
   baseDot.position.copy(pos);
   scene.add(baseDot);
-  infoDiv.innerHTML = 'Move up → Tap to finish height';
 }
 
 function finishHeightMeasurement() {
   if (!heightBasePoint || !reticle.visible) return;
   const top = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
-  const height = Math.abs(top.y - heightBasePoint.y);
+  const height = top.y - heightBasePoint.y;
+  const mid = new THREE.Vector3().lerpVectors(heightBasePoint, top, 0.5);
 
+  // Vertical line
   const lineGeom = new THREE.BufferGeometry().setFromPoints([heightBasePoint, top]);
-  heightLine = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({color:0xff0088, linewidth:10}));
+  heightLine = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({color:0xff0088, linewidth:8}));
   scene.add(heightLine);
 
-  heightLabel = makeLabel(formatDistance(height) + ' ↑');
-  heightLabel.position.lerpVectors(heightBasePoint, top, 0.5);
-  heightLabel.scale.set(0.45, 0.18, 1);
+  // Label
+  heightLabel = makeLabel(formatDistance(Math.abs(height)) + ' ↑');
+  heightLabel.position.copy(mid);
+  heightLabel.scale.set(0.4, 0.16, 1);
   scene.add(heightLabel);
 
   updateMiniMap();
-  toggleHeightMode(); // auto exit
+  heightMode = false;
+  heightBtn.style.background = '#00aa44';
+  heightBtn.textContent = 'Height';
+  heightBasePoint = null;
   updateInfo();
 }
 
@@ -252,44 +249,44 @@ function updateCurrentChain() {
 
 function makeLabel(text) {
   const canvas = document.createElement('canvas');
-  canvas.width = 260; canvas.height = 100;
+  canvas.width = 240; canvas.height = 90;
   const c = canvas.getContext('2d');
-  c.fillStyle = 'rgba(0,0,0,0.92)'; c.fillRect(0,0,260,100);
-  c.fillStyle = '#ffffff'; c.font = 'bold 52px system-ui';
+  c.fillStyle = 'rgba(0,0,0,0.92)'; c.fillRect(0,0,240,90);
+  c.fillStyle = '#ffffff'; c.font = 'bold 48px system-ui';
   c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(text, 130, 50);
+  c.fillText(text, 120, 45);
   return new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
 }
 
 function refreshAllLabels() {
-  allChains.forEach(chain => chain.labels.forEach((l, i) => {
-    const d = chain.points[i].distanceTo(chain.points[i+1]);
-    l.material.map.dispose();
-    l.material.map = new THREE.CanvasTexture(makeLabelCanvas(formatDistance(d)));
-    l.material.needsUpdate = true;
-  }));
+  allChains.forEach(chain => {
+    chain.labels.forEach((l, i) => {
+      const d = chain.points[i].distanceTo(chain.points[i+1]);
+      l.material.map.dispose();
+      l.material.map = new THREE.CanvasTexture(makeLabelCanvas(formatDistance(d)));
+      l.material.needsUpdate = true;
+    });
+  });
   updateCurrentChain();
 }
 
 function makeLabelCanvas(text) {
   const c = document.createElement('canvas');
-  c.width = 260; c.height = 100;
+  c.width = 240; c.height = 90;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(0,0,0,0.92)'; ctx.fillRect(0,0,260,100);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 52px system-ui';
+  ctx.fillStyle = 'rgba(0,0,0,0.92)'; ctx.fillRect(0,0,240,90);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 48px system-ui';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(text, 130, 50);
+  ctx.fillText(text, 120, 45);
   return c;
 }
 
 function updateInfo() {
   const pts = currentChain.points.length;
   const total = pts < 2 ? 0 : currentChain.points.reduce((s, p, i) => i === 0 ? 0 : s + p.distanceTo(currentChain.points[i-1]), 0);
-  infoDiv.innerHTML = heightMode
-    ? '<span style="color:#00ff88">HEIGHT MODE</span> – Tap floor → move up → tap'
-    : pts < 2
-      ? `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`
-      : `Total: <span style="color:#ff4444;font-size:28px">${formatDistance(total)}</span> • ${pts} pts`;
+  infoDiv.innerHTML = heightMode ? 'Height Mode – Tap floor → ceiling' :
+    pts < 2 ? `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts` :
+    `Total: <span style="color:#ff4444;font-size:28px">${formatDistance(total)}</span> • ${pts} pts`;
 }
 
 function showButtons() {
@@ -297,14 +294,16 @@ function showButtons() {
   undoBtn.style.display = has ? 'block' : 'none';
   resetBtn.style.display = has ? 'block' : 'none';
   newLineBtn.style.display = (currentChain.points.length >= 2) ? 'block' : 'none';
+  heightBtn.style.display = 'block';
   miniMapBtn.style.display = 'block';
 }
 
-// MINI-MAP (unchanged — perfect)
+// MINI-MAP SETUP
 function setupMiniMap() {
   const size = 180;
   miniMapCanvas = document.createElement('canvas');
-  miniMapCanvas.width = size; miniMapCanvas.height = size;
+  miniMapCanvas.width = size;
+  miniMapCanvas.height = size;
   miniMapCanvas.style.cssText = `position:fixed;bottom:20px;left:20px;width:${size}px;height:${size}px;
     border:3px solid rgba(255,255,255,0.3);border-radius:50%;box-shadow:0 8px 30px rgba(0,0,0,0.6);z-index:998;`;
   document.body.appendChild(miniMapCanvas);
@@ -312,18 +311,21 @@ function setupMiniMap() {
   miniMapRenderer = new THREE.WebGLRenderer({ canvas: miniMapCanvas, alpha: true });
   miniMapRenderer.setSize(size, size);
 
-  miniMapCamera = new THREE.OrthographicCamera(-6, 6, 6, -6, 0.1, 50);
-  miniMapCamera.position.y = 12;
+  miniMapCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 50);
+  miniMapCamera.position.y = 10;
   miniMapCamera.lookAt(0, 0, 0);
 
   miniMapScene = new THREE.Scene();
   miniMapScene.background = new THREE.Color(0x111111);
-  miniMapScene.add(new THREE.GridHelper(12, 12, 0x444444, 0x222222));
+  miniMapScene.add(new THREE.GridHelper(10, 10, 0x444444, 0x222222));
 }
 
 function updateMiniMap() {
+  // Clear and redraw everything
   miniMapScene.clear();
-  miniMapScene.add(new THREE.GridHelper(12, 12, 0x444444, 0x222222));
+  miniMapScene.add(new THREE.GridHelper(10, 10, 0x444444, 0x222222));
+
+  // Draw all chains
   [...allChains, currentChain].forEach(chain => {
     if (chain.points.length < 2) return;
     const line = new THREE.Line(
@@ -332,13 +334,14 @@ function updateMiniMap() {
     );
     miniMapScene.add(line);
   });
+
+  // Height line
   if (heightLine) {
-    const geom = new THREE.BufferGeometry().setFromPoints([
-      heightLine.geometry.attributes.position.array.slice(0, 3),
-      heightLine.geometry.attributes.position.array.slice(3, 6)
-    ].map(arr => new THREE.Vector3().fromArray(arr)));
-    miniMapScene.add(new THREE.Line(geom, new THREE.LineBasicMaterial({color:0xff0088, linewidth:6})));
+    const geom = new THREE.BufferGeometry().setFromPoints(heightLine.geometry.attributes.position.array);
+    const line = new THREE.Line(geom, new THREE.LineBasicMaterial({color:0xff0088, linewidth:6}));
+    miniMapScene.add(line);
   }
+
   miniMapRenderer.render(miniMapScene, miniMapCamera);
 }
 
@@ -367,24 +370,29 @@ function render(t, frame) {
   if (hitTestSource && frame) {
     const hits = frame.getHitTestResults(hitTestSource);
     if (hits.length > 0) {
+      isWallMode = false;
       reticle.visible = true;
       reticle.matrix.fromArray(hits[0].getPose(renderer.xr.getReferenceSpace()).transform.matrix);
 
+      // Live height preview
       if (heightMode && heightBasePoint) {
         const top = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
         if (heightLine) scene.remove(heightLine);
         if (heightLabel) scene.remove(heightLabel);
         const geom = new THREE.BufferGeometry().setFromPoints([heightBasePoint, top]);
-        heightLine = new THREE.Line(geom, new THREE.LineBasicMaterial({color:0xff0088, linewidth:10}));
+        heightLine = new THREE.Line(geom, new THREE.LineBasicMaterial({color:0xff0088, linewidth:8}));
         scene.add(heightLine);
-        heightLabel = makeLabel(formatDistance(Math.abs(top.y - heightBasePoint.y)) + ' ↑');
+        const h = Math.abs(top.y - heightBasePoint.y);
+        heightLabel = makeLabel(formatDistance(h) + ' ↑');
         heightLabel.position.lerpVectors(heightBasePoint, top, 0.5);
-        heightLabel.scale.set(0.45, 0.18, 1);
+        heightLabel.scale.set(0.4, 0.16, 1);
         scene.add(heightLabel);
       }
     } else {
+      isWallMode = true;
       reticle.visible = false;
     }
+    if (currentChain.points.length < 2 && !heightMode) updateInfo();
   }
 
   renderer.render(scene, camera);
