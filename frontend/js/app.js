@@ -1,12 +1,12 @@
-// js/app.js — FINAL PERFECT VERSION (Dec 2025)
+// js/app.js — FINAL PERFECT VERSION (Smaller buttons + Undo at bottom-right)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
 let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
-let allChains = [];           // All finished measurements
-let currentChain = null;      // Current active measurement
+let allChains = []; // All finished measurements
+let currentChain = null; // Current active measurement
 let infoDiv, undoBtn, unitBtn, newLineBtn, resetBtn;
 let isWallMode = false;
 let currentUnit = 'm';
@@ -17,7 +17,6 @@ init();
 async function init() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
-
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -34,11 +33,11 @@ async function init() {
   infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 m</span> • 0 pts`;
   document.body.appendChild(infoDiv);
 
-  // Buttons (with stopPropagation)
-  undoBtn   = createBtn('↺', 'top:20px;left:20px;width:56px;height:56px;border-radius:50%;background:#333;font-size:28px;', undoLastPoint);
-  unitBtn   = createBtn('m',  'top:90px;left:20px;width:56px;height:56px;border-radius:50%;background:#0066ff;', toggleUnit);
-  newLineBtn = createBtn('New Line', 'top:20px;right:130px;background:#444;', startNewLine);
-  resetBtn  = createBtn('Reset',   'top:20px;right:20px;background:#ff3333;', resetAll);
+  // SMALLER BUTTONS
+  undoBtn = createBtn('↺', 'bottom:100px;right:20px;width:48px;height:48px;border-radius:50%;background:#333;font-size:24px;', undoLastPoint);
+  unitBtn = createBtn('m', 'top:90px;left:20px;width:48px;height:48px;border-radius:50%;background:#0066ff;', toggleUnit);
+  newLineBtn = createBtn('New Line', 'top:20px;right:130px;background:#444;padding:10px 18px;font-size:14px;', startNewLine);
+  resetBtn = createBtn('Reset', 'top:20px;right:20px;background:#ff3333;padding:10px 18px;font-size:14px;', resetAll);
 
   [undoBtn, newLineBtn, resetBtn].forEach(b => b.style.display = 'none');
 
@@ -64,18 +63,15 @@ async function init() {
   video.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:-1;';
   video.autoplay = video.muted = video.playsInline = true;
   document.body.appendChild(video);
-
   canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0;z-index:998;';
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
-
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(s => { video.srcObject = s; video.play(); })
     .catch(() => {});
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
-
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0x00ff88 })
@@ -83,7 +79,6 @@ async function init() {
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
-
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
@@ -94,8 +89,6 @@ async function init() {
   });
 
   renderer.setAnimationLoop(render);
-
-  // Start first chain
   startNewLine();
 }
 
@@ -177,15 +170,12 @@ function updateCurrentChain() {
   if (currentChain.line) scene.remove(currentChain.line);
   currentChain.labels.forEach(l => scene.remove(l));
   currentChain.labels = [];
-
   if (currentChain.points.length < 2) return;
-
   currentChain.line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(currentChain.points),
     new THREE.LineBasicMaterial({ color: 0xff0044, linewidth: 6 })
   );
   scene.add(currentChain.line);
-
   for (let i = 1; i < currentChain.points.length; i++) {
     const dist = currentChain.points[i-1].distanceTo(currentChain.points[i]);
     const mid = new THREE.Vector3().lerpVectors(currentChain.points[i-1], currentChain.points[i], 0.5);
@@ -207,7 +197,6 @@ function makeLabel(text) {
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText(text, 110, 40);
-
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false })
   );
@@ -216,7 +205,6 @@ function makeLabel(text) {
 }
 
 function refreshAllLabels() {
-  // Update old chains
   allChains.forEach(chain => {
     chain.labels.forEach((spr, i) => {
       const d = chain.points[i].distanceTo(chain.points[i+1]);
@@ -268,28 +256,23 @@ function resetAll() {
 
 function render(t, frame) {
   if (!frame) return;
-
   const session = renderer.xr.getSession();
   if (session && !hitTestSource) {
     session.requestReferenceSpace('viewer').then(refSpace => {
       session.requestHitTestSource({ space: refSpace }).then(source => hitTestSource = source);
     });
   }
-
   if (hitTestSource && frame) {
     const hits = frame.getHitTestResults(hitTestSource);
     if (hits.length > 0) {
-      // FLOOR / HORIZONTAL SURFACE
       isWallMode = false;
       canvas.style.opacity = '0';
       reticle.visible = true;
       reticle.matrix.fromArray(hits[0].getPose(renderer.xr.getReferenceSpace()).transform.matrix);
-      // Force correct info text on floor
       if (currentChain.points.length < 2) {
         infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`;
       }
     } else {
-      // WALL / VERTICAL SURFACE
       isWallMode = true;
       canvas.style.opacity = '0.6';
       reticle.visible = false;
@@ -298,6 +281,5 @@ function render(t, frame) {
       }
     }
   }
-
   renderer.render(scene, camera);
 }
