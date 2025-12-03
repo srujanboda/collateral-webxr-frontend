@@ -51,6 +51,7 @@ async function init() {
     optionalFeatures: ['dom-overlay'],
     domOverlay: { root: document.body }
   });
+  arButton.classList.add('custom-ar-button'); // Add class for control
   document.body.appendChild(arButton);
 
   arButton.addEventListener('click', () => {
@@ -289,129 +290,179 @@ function render(t, frame) {
   renderer.render(scene, camera);
 }
 
-// --- VIDEO CALL LOGIC ---
+// --- VIDEO CALL LOGIC & LANDING PAGE ---
 let peer = null;
 let myPeerId = null;
 let currentCall = null;
 let localStream = null;
 let role = null; // 'user' or 'reviewer'
 
-const remoteIdInput = document.getElementById('remote-id');
-const joinUserBtn = document.getElementById('join-user-btn');
-const joinReviewerBtn = document.getElementById('join-reviewer-btn');
-const myIdDisplay = document.getElementById('my-id-display');
-const callPanel = document.getElementById('call-panel');
-const connectionPanel = document.getElementById('connection-panel');
-const startCallBtn = document.getElementById('start-call-btn');
-const endCallBtn = document.getElementById('end-call-btn');
-const callStatus = document.getElementById('call-status');
+// Landing Page Elements
+const landingOverlay = document.getElementById('landing-overlay');
+const selectUserBtn = document.getElementById('select-user');
+const selectReviewerBtn = document.getElementById('select-reviewer');
+const setupPanel = document.getElementById('setup-panel');
+const setupReviewer = document.getElementById('setup-reviewer');
+const setupUser = document.getElementById('setup-user');
+const generatedIdDisplay = document.getElementById('generated-id');
+const landingRemoteIdInput = document.getElementById('landing-remote-id');
+const connectBtn = document.getElementById('connect-btn');
+const enterArBtn = document.getElementById('enter-ar-btn');
+
+// Video UI Elements
+const videoControls = document.getElementById('video-controls');
+const toggleVideoUiBtn = document.getElementById('toggle-video-ui');
+const videoUiContent = document.getElementById('video-ui-content');
+const recordingIndicator = document.getElementById('recording-indicator');
 const remoteVideoContainer = document.getElementById('remote-video-container');
 const remoteVideo = document.getElementById('remote-video');
 const closeRemoteBtn = document.getElementById('close-remote-btn');
-const toggleVideoUiBtn = document.getElementById('toggle-video-ui');
-const videoUiContent = document.getElementById('video-ui-content');
+const endCallBtn = document.getElementById('end-call-btn');
+const callStatus = document.getElementById('call-status');
+
+// --- LANDING PAGE EVENTS ---
+
+selectUserBtn.addEventListener('click', () => {
+  role = 'user';
+  selectUserBtn.classList.add('selected');
+  selectReviewerBtn.classList.remove('selected');
+  setupPanel.style.display = 'block';
+  setupUser.style.display = 'block';
+  setupReviewer.style.display = 'none';
+  enterArBtn.disabled = true;
+  enterArBtn.style.cursor = 'not-allowed';
+});
+
+selectReviewerBtn.addEventListener('click', () => {
+  role = 'reviewer';
+  selectReviewerBtn.classList.add('selected');
+  selectUserBtn.classList.remove('selected');
+  setupPanel.style.display = 'block';
+  setupUser.style.display = 'none';
+  setupReviewer.style.display = 'block';
+  enterArBtn.disabled = false; // Reviewer can enter immediately if they want, or wait
+  enterArBtn.style.cursor = 'pointer';
+  initPeer(); // Auto-init for reviewer to get ID
+});
+
+connectBtn.addEventListener('click', () => {
+  const remoteId = landingRemoteIdInput.value.trim();
+  if (!remoteId) return alert("Please enter Reviewer ID");
+  initPeer(remoteId);
+});
+
+enterArBtn.addEventListener('click', () => {
+  landingOverlay.style.display = 'none';
+  // Show AR Button
+  const arBtn = document.querySelector('.custom-ar-button');
+  if (arBtn) arBtn.style.display = 'flex'; // Override CSS hidden
+
+  // Show Video Controls (minimized by default or expanded?)
+  videoControls.style.display = 'flex';
+
+  // If user, start call now if not already? 
+  // Logic: User clicked "Connect & Start" -> Init Peer -> Connected -> Enable Enter AR.
+  // Actually, let's make "Connect & Start" just connect, and "Enter AR" is the final step.
+});
+
+// --- PEERJS LOGIC ---
+
+function initPeer(remoteIdToCall = null) {
+  if (peer) return; // Already init
+
+  peer = new Peer();
+
+  peer.on('open', (id) => {
+    myPeerId = id;
+    if (role === 'reviewer') {
+      generatedIdDisplay.textContent = id;
+    } else if (role === 'user' && remoteIdToCall) {
+      // User is ready to call
+      startCall(remoteIdToCall);
+    }
+  });
+
+  peer.on('call', (call) => {
+    // Incoming call (Reviewer receiving)
+    if (role === 'reviewer') {
+      call.answer(); // Answer empty (receive only)
+      handleStream(call);
+      // Auto-enter AR or just show video?
+      // Reviewer might just want to see the video.
+      // But if they are in the app, they can see the video overlay.
+    }
+  });
+
+  peer.on('error', (err) => {
+    console.error(err);
+    alert("Connection Error: " + err.type);
+  });
+}
+
+async function startCall(remoteId) {
+  connectBtn.textContent = "Connecting...";
+  try {
+    // Get screen stream
+    localStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: "always" },
+      audio: true
+    });
+
+    localStream.getVideoTracks()[0].onended = () => endCall();
+
+    const call = peer.call(remoteId, localStream);
+    handleStream(call);
+
+    // Enable Enter AR button
+    connectBtn.textContent = "Connected!";
+    connectBtn.style.background = "#28a745";
+    enterArBtn.disabled = false;
+    enterArBtn.style.cursor = 'pointer';
+    enterArBtn.style.background = "#0066ff";
+    enterArBtn.style.color = "white";
+
+  } catch (err) {
+    console.error(err);
+    connectBtn.textContent = "Failed (Retry)";
+    alert("Could not get screen share. " + err.message);
+  }
+}
+
+function handleStream(call) {
+  currentCall = call;
+  call.on('stream', (remoteStream) => {
+    if (role === 'reviewer') {
+      remoteVideoContainer.style.display = 'block';
+      remoteVideo.srcObject = remoteStream;
+      callStatus.textContent = "Viewing User Stream";
+    } else {
+      callStatus.textContent = "Sharing Screen";
+    }
+  });
+  call.on('close', endCall);
+}
+
+// --- UI LOGIC ---
 
 let isUiCollapsed = false;
 toggleVideoUiBtn.addEventListener('click', () => {
   isUiCollapsed = !isUiCollapsed;
   videoUiContent.style.display = isUiCollapsed ? 'none' : 'block';
   toggleVideoUiBtn.textContent = isUiCollapsed ? '+' : '−';
+
+  // Toggle Red Dot
+  if (isUiCollapsed && currentCall) {
+    recordingIndicator.style.display = 'inline-block';
+  } else {
+    recordingIndicator.style.display = 'none';
+  }
 });
 
-joinUserBtn.addEventListener('click', () => initPeer('user'));
-joinReviewerBtn.addEventListener('click', () => initPeer('reviewer'));
-startCallBtn.addEventListener('click', startCall);
 endCallBtn.addEventListener('click', endCall);
 closeRemoteBtn.addEventListener('click', () => {
   remoteVideoContainer.style.display = 'none';
   remoteVideo.srcObject = null;
 });
-
-function initPeer(selectedRole) {
-  role = selectedRole;
-  peer = new Peer(); // Auto-generate ID
-
-  peer.on('open', (id) => {
-    myPeerId = id;
-    myIdDisplay.textContent = `My ID: ${id}`;
-    connectionPanel.style.display = 'none';
-    callPanel.style.display = 'block';
-
-    if (role === 'reviewer') {
-      callStatus.textContent = "Waiting for call...";
-      startCallBtn.style.display = 'none'; // Reviewer waits
-    } else {
-      callStatus.textContent = "Ready to call";
-      startCallBtn.style.display = 'block'; // User initiates
-    }
-  });
-
-  peer.on('call', (call) => {
-    if (role === 'reviewer') {
-      // Answer automatically or prompt? Let's answer automatically for now
-      callStatus.textContent = "Incoming call...";
-      call.answer(); // Answer without stream (receive only)
-      handleStream(call);
-    } else {
-      // User receiving call? Unlikely in this flow, but possible
-      call.answer();
-      handleStream(call);
-    }
-  });
-
-  peer.on('error', (err) => {
-    console.error(err);
-    callStatus.textContent = "Error: " + err.type;
-  });
-}
-
-async function startCall() {
-  const remoteId = remoteIdInput.value.trim();
-  if (!remoteId) {
-    alert("Please enter the Reviewer's ID");
-    return;
-  }
-
-  try {
-    callStatus.textContent = "Getting screen stream...";
-    // Try to get screen share to show AR content
-    localStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: "always" },
-      audio: true
-    });
-
-    // Handle stream end (user stops sharing)
-    localStream.getVideoTracks()[0].onended = () => endCall();
-
-    callStatus.textContent = "Calling...";
-    const call = peer.call(remoteId, localStream);
-    handleStream(call);
-
-  } catch (err) {
-    console.error("Failed to get stream", err);
-    callStatus.textContent = "Stream failed: " + err.message;
-    // Fallback to camera?
-    // localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  }
-}
-
-function handleStream(call) {
-  currentCall = call;
-
-  call.on('stream', (remoteStream) => {
-    if (role === 'reviewer') {
-      remoteVideoContainer.style.display = 'block';
-      remoteVideo.srcObject = remoteStream;
-      callStatus.textContent = "Connected (Viewing)";
-    } else {
-      callStatus.textContent = "Connected (Sharing)";
-    }
-  });
-
-  call.on('close', () => {
-    endCall();
-  });
-}
 
 function endCall() {
   if (currentCall) {
@@ -422,7 +473,15 @@ function endCall() {
     localStream.getTracks().forEach(track => track.stop());
     localStream = null;
   }
-  remoteVideoContainer.style.display = 'none';
+
   remoteVideo.srcObject = null;
-  callStatus.textContent = role === 'reviewer' ? "Waiting for call..." : "Ready to call";
+  remoteVideoContainer.style.display = 'none';
+  callStatus.textContent = "Call Ended";
+  recordingIndicator.style.display = 'none';
+
+  // Reset buttons if needed, or just leave as is.
+  if (role === 'user') {
+    connectBtn.textContent = "Connect & Start";
+    connectBtn.style.background = "#0066ff";
+  }
 }
