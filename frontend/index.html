@@ -29,46 +29,138 @@
       border-radius: 20px !important;
       box-shadow: 0 12px 35px rgba(0, 102, 255, 0.4) !important;
       z-index: 9999 !important;
-      display: flex;
+      display: none !important;
+      /* Hidden initially */
       align-items: center;
       justify-content: center;
+    }
+
+    /* Landing Page Overlay */
+    #landing-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: 20000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .role-btn {
+      padding: 15px 30px;
+      font-size: 18px;
+      margin: 10px;
+      border: 2px solid #333;
+      background: #111;
+      color: white;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 200px;
+    }
+
+    .role-btn.selected {
+      border-color: #0066ff;
+      background: #002244;
+    }
+
+    /* Glowing Red Dot for Minimized State */
+    .recording-dot {
+      width: 12px;
+      height: 12px;
+      background: #ff0000;
+      border-radius: 50%;
+      display: inline-block;
+      box-shadow: 0 0 0 0 rgba(255, 0, 0, 1);
+      animation: pulse-red 2s infinite;
+      margin-left: 10px;
+    }
+
+    @keyframes pulse-red {
+      0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+      }
+
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+      }
+
+      100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+      }
     }
   </style>
 </head>
 
 <body>
 
+  <!-- Landing Page Overlay -->
+  <div id="landing-overlay">
+    <h1
+      style="margin-bottom: 40px; font-size: 32px; background: linear-gradient(45deg, #0066ff, #00ccff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+      AR Measure & Call</h1>
+
+    <div id="role-selection">
+      <h3 style="color: #aaa; margin-bottom: 20px;">Select Your Role</h3>
+      <button class="role-btn" id="select-user">User (Measure)</button>
+      <button class="role-btn" id="select-reviewer">Reviewer (View)</button>
+    </div>
+
+    <div id="setup-panel" style="display: none; width: 100%; max-width: 400px;">
+      <div id="setup-reviewer" style="display: none;">
+        <p style="color: #aaa;">Share this ID with the User:</p>
+        <div id="generated-id"
+          style="font-size: 24px; font-family: monospace; color: #00ff88; margin: 20px 0; padding: 15px; background: #111; border-radius: 8px; user-select: text;">
+          Generating...</div>
+        <p style="color: #666; font-size: 14px;">Waiting for connection...</p>
+      </div>
+
+      <div id="setup-user" style="display: none;">
+        <p style="color: #aaa;">Enter Reviewer's ID:</p>
+        <input type="text" id="landing-remote-id" placeholder="e.g. 5a032df4..."
+          style="width: 100%; padding: 15px; font-size: 18px; border-radius: 8px; border: none; background: #222; color: white; text-align: center; margin-bottom: 20px;">
+        <button id="connect-btn"
+          style="width: 100%; padding: 15px; background: #0066ff; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer;">Connect
+          & Start</button>
+      </div>
+
+      <button id="enter-ar-btn"
+        style="margin-top: 30px; padding: 15px 40px; background: #333; color: #666; border: none; border-radius: 30px; font-size: 18px; font-weight: bold; cursor: not-allowed;"
+        disabled>Enter AR</button>
+    </div>
+  </div>
+
   <!-- PeerJS -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
-  <!-- Video Call UI -->
+  <!-- Video Call UI (Initially Hidden) -->
   <div id="video-controls"
-    style="position: fixed; top: 10px; left: 10px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 12px; color: white; display: flex; flex-direction: column; gap: 10px; max-width: 300px; transition: all 0.3s ease;">
+    style="position: fixed; top: 10px; left: 10px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 12px; color: white; display: none; flex-direction: column; gap: 10px; max-width: 300px; transition: all 0.3s ease;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
-      <h3 style="margin: 0; font-size: 16px;">Video Call</h3>
+      <div style="display: flex; align-items: center;">
+        <h3 style="margin: 0; font-size: 16px;">Video Call</h3>
+        <span id="recording-indicator" class="recording-dot" style="display: none;"></span>
+      </div>
       <button id="toggle-video-ui"
         style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0 5px;">−</button>
     </div>
 
     <div id="video-ui-content">
-      <div id="connection-panel">
-        <input type="text" id="remote-id" placeholder="Enter Remote ID"
-          style="width: 100%; padding: 8px; margin-bottom: 8px; border-radius: 4px; border: none; box-sizing: border-box;">
-        <div style="display: flex; gap: 5px;">
-          <button id="join-user-btn"
-            style="flex: 1; padding: 8px; background: #0066ff; color: white; border: none; border-radius: 4px; cursor: pointer;">Join
-            as User</button>
-          <button id="join-reviewer-btn"
-            style="flex: 1; padding: 8px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Join
-            as Reviewer</button>
-        </div>
-        <div id="my-id-display" style="margin-top: 10px; font-size: 12px; color: #aaa; word-break: break-all;"></div>
-      </div>
-
-      <div id="call-panel" style="display: none;">
+      <!-- Connection panel removed from here as it's handled in landing page -->
+      <div id="call-panel">
         <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+          <!-- Start Call button might not be needed if we auto-call on connect, but keeping for manual control if needed -->
           <button id="start-call-btn"
-            style="flex: 1; padding: 8px; background: #0066ff; color: white; border: none; border-radius: 4px; cursor: pointer;">Start
+            style="flex: 1; padding: 8px; background: #0066ff; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Start
             Call</button>
           <button id="end-call-btn"
             style="flex: 1; padding: 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">End
