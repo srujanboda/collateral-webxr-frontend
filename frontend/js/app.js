@@ -1,12 +1,12 @@
-// js/app.js — FINAL PERFECT VERSION (Smaller buttons + Undo at bottom-right)
+// js/app.js — FINAL LAYOUT (New Line top-right, Reset bottom-left)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
 
 let camera, scene, renderer, reticle, controller;
 let hitTestSource = null;
-let allChains = []; // All finished measurements
-let currentChain = null; // Current active measurement
+let allChains = [];
+let currentChain = null;
 let infoDiv, undoBtn, unitBtn, newLineBtn, resetBtn;
 let isWallMode = false;
 let currentUnit = 'm';
@@ -33,11 +33,15 @@ async function init() {
   infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 m</span> • 0 pts`;
   document.body.appendChild(infoDiv);
 
-  // SMALLER BUTTONS
-  undoBtn = createBtn('↺', 'bottom:100px;right:20px;width:48px;height:48px;border-radius:50%;background:#333;font-size:24px;', undoLastPoint);
-  unitBtn = createBtn('m', 'top:90px;left:20px;width:48px;height:48px;border-radius:50%;background:#0066ff;', toggleUnit);
-  newLineBtn = createBtn('New Line', 'top:20px;right:130px;background:#444;padding:10px 18px;font-size:14px;', startNewLine);
-  resetBtn = createBtn('Reset', 'top:20px;right:20px;background:#ff3333;padding:10px 18px;font-size:14px;', resetAll);
+  // BUTTONS — NEW POSITIONS
+  undoBtn    = createBtn('↺', 'bottom:100px;right:20px;width:48px;height:48px;border-radius:50%;background:#333;font-size:24px;', undoLastPoint);
+  unitBtn    = createBtn('m', 'top:90px;left:20px;width:48px;height:48px;border-radius:50%;background:#0066ff;', toggleUnit);
+  
+  // New Line → TOP-RIGHT
+  newLineBtn = createBtn('New Line', 'top:20px;right:20px;background:#444;padding:10px 18px;font-size:14px;border-radius:18px;', startNewLine);
+  
+  // Reset → BOTTOM-LEFT
+  resetBtn   = createBtn('Reset', 'bottom:100px;left:20px;background:#ff3333;padding:10px 18px;font-size:14px;border-radius:18px;', resetAll);
 
   [undoBtn, newLineBtn, resetBtn].forEach(b => b.style.display = 'none');
 
@@ -49,7 +53,6 @@ async function init() {
   });
   document.body.appendChild(arButton);
 
-  // Remove default STOP AR button
   arButton.addEventListener('click', () => {
     setTimeout(() => {
       document.querySelectorAll('button').forEach(b => {
@@ -58,7 +61,7 @@ async function init() {
     }, 1000);
   });
 
-  // Video + OpenCV canvas (for wall corners)
+  // Video feed
   video = document.createElement('video');
   video.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:-1;';
   video.autoplay = video.muted = video.playsInline = true;
@@ -67,11 +70,13 @@ async function init() {
   canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0;z-index:998;';
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
+
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(s => { video.srcObject = s; video.play(); })
     .catch(() => {});
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
+
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.08, 0.10, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0x00ff88 })
@@ -79,11 +84,11 @@ async function init() {
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
   scene.add(reticle);
+
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
 
-  // Only trigger tap on empty space
   renderer.domElement.addEventListener('click', e => {
     if (e.target === renderer.domElement) onScreenTap(e);
   });
@@ -92,13 +97,14 @@ async function init() {
   startNewLine();
 }
 
-// Helper
 function createBtn(text, style, fn) {
   const b = document.createElement('button');
   b.textContent = text;
-  b.style.cssText = `position:fixed;z-index:9999;color:white;font:bold 16px system-ui;padding:12px 20px;border:none;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,0.5);${style}`;
-  if (text === 'm' || text === 'ft' || text === 'in') {
-    b.style.cssText += 'display:flex;align-items:center;justify-content:center;';
+  b.style.cssText = `position:fixed;z-index:9999;color:white;font:bold 16px system-ui;border:none;box-shadow:0 6px 20px rgba(0,0,0,0.5);${style}`;
+  if (text.length <= 3) {
+    b.style.display = 'flex';
+    b.style.alignItems = 'center';
+    b.style.justifyContent = 'center';
   }
   b.addEventListener('click', e => { e.stopPropagation(); fn(); });
   document.body.appendChild(b);
@@ -106,9 +112,7 @@ function createBtn(text, style, fn) {
 }
 
 function toggleUnit() {
-  if (currentUnit === 'm') currentUnit = 'ft';
-  else if (currentUnit === 'ft') currentUnit = 'in';
-  else currentUnit = 'm';
+  currentUnit = currentUnit === 'm' ? 'ft' : currentUnit === 'ft' ? 'in' : 'm';
   unitBtn.textContent = currentUnit;
   refreshAllLabels();
 }
@@ -171,11 +175,13 @@ function updateCurrentChain() {
   currentChain.labels.forEach(l => scene.remove(l));
   currentChain.labels = [];
   if (currentChain.points.length < 2) return;
+
   currentChain.line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(currentChain.points),
     new THREE.LineBasicMaterial({ color: 0xff0044, linewidth: 6 })
   );
   scene.add(currentChain.line);
+
   for (let i = 1; i < currentChain.points.length; i++) {
     const dist = currentChain.points[i-1].distanceTo(currentChain.points[i]);
     const mid = new THREE.Vector3().lerpVectors(currentChain.points[i-1], currentChain.points[i], 0.5);
@@ -230,8 +236,7 @@ function makeLabelCanvas(text) {
 
 function updateInfo() {
   const pts = currentChain.points.length;
-  const total = currentChain.points.length < 2 ? 0 :
-    currentChain.points.reduce((sum, p, i) => i === 0 ? 0 : sum + p.distanceTo(currentChain.points[i-1]), 0);
+  const total = pts < 2 ? 0 : currentChain.points.reduce((s, p, i) => i === 0 ? 0 : s + p.distanceTo(currentChain.points[i-1]), 0);
   infoDiv.innerHTML = pts < 2
     ? (isWallMode ? `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere` : `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`)
     : `Total: <span style="color:#ff4444;font-size:26px">${formatDistance(total)}</span> • ${pts} pts`;
