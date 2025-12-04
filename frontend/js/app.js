@@ -352,11 +352,57 @@ connectBtn.addEventListener('click', () => {
   initPeer(remoteId);
 });
 
+// Update the Enter AR listener to show Proxy instead of Real on mobile
 enterArBtn.addEventListener('click', () => {
   landingOverlay.style.display = 'none';
-  const arBtn = document.querySelector('.custom-ar-button');
-  if (arBtn) arBtn.style.display = 'flex'; // Override CSS hidden
   videoControls.style.display = 'flex';
+
+  const realArBtn = document.querySelector('.custom-ar-button');
+  const proxyBtn = document.getElementById('proxy-ar-btn');
+
+  if (isFallbackMode) {
+    // Mobile: Show Proxy, Hide Real
+    if (proxyBtn && realArBtn) {
+      proxyBtn.style.display = 'flex';
+      realArBtn.style.display = 'none';
+
+      // Setup Proxy Click
+      proxyBtn.onclick = async () => {
+        console.log("Proxy Click: Releasing Camera...");
+
+        // A. Stop Camera
+        if (localStream) {
+          localStream.getVideoTracks().forEach(t => {
+            t.stop();
+            localStream.removeTrack(t);
+          });
+        }
+
+        // B. Switch to Canvas Stream (for Reviewer)
+        try {
+          const canvasStream = renderer.domElement.captureStream(30);
+          const canvasTrack = canvasStream.getVideoTracks()[0];
+          if (canvasTrack && currentCall && currentCall.peerConnection) {
+            localStream.addTrack(canvasTrack);
+            const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+            if (sender) sender.replaceTrack(canvasTrack);
+          }
+        } catch (e) {
+          console.error("Canvas stream failed", e);
+        }
+
+        // C. Trigger Real AR
+        setTimeout(() => {
+          realArBtn.click();
+          proxyBtn.style.display = 'none';
+          realArBtn.style.display = 'flex';
+        }, 100);
+      };
+    }
+  } else {
+    // Desktop: Show Real directly
+    if (realArBtn) realArBtn.style.display = 'flex';
+  }
 });
 
 // --- PEERJS LOGIC ---
@@ -508,47 +554,34 @@ function endCall() {
 
 // --- AR SESSION LISTENERS (For Fallback Switching) ---
 
-// We need to stop the camera *before* WebXR tries to take it.
-// The ARButton handles the session request on click.
-// We can add a 'click' listener to the ARButton that runs *first* (capturing phase or just added after?).
-// ARButton is created in init(). Let's hook it there or here if we can find it.
+// --- AR PROXY BUTTON (Mobile Resource Management) ---
+// We use a proxy button to intercept the 'Enter AR' click.
+// This ensures we release the camera *before* WebXR tries to take it.
 
-function setupArButtonListener() {
-  const arBtn = document.querySelector('.custom-ar-button');
-  if (!arBtn) return;
+function setupProxyArButton() {
+  const realArBtn = document.querySelector('.custom-ar-button');
+  if (!realArBtn) return;
 
-  arBtn.addEventListener('click', async () => {
-    if (isFallbackMode && localStream) {
-      console.log("AR Button Clicked: Releasing Camera for WebXR...");
+  // 1. Create Proxy Button (Clone styles)
+  const proxyBtn = document.createElement('button');
+  proxyBtn.textContent = realArBtn.textContent;
+  proxyBtn.className = realArBtn.className;
+  proxyBtn.style.cssText = realArBtn.style.cssText; // Copy inline styles
+  proxyBtn.style.display = 'none'; // Hidden initially
+  proxyBtn.id = 'proxy-ar-btn';
 
-      // 1. Stop Camera Tracks IMMEDIATELLY
-      // This frees the hardware for WebXR
-      localStream.getVideoTracks().forEach(track => {
-        track.stop();
-        localStream.removeTrack(track);
-      });
+  // Insert proxy
+  document.body.appendChild(proxyBtn);
 
-      // 2. Switch to Canvas Stream (so connection doesn't die)
-      // We might need to wait for the canvas to actually have content, 
-      // but we can start the stream now.
-      const canvasStream = renderer.domElement.captureStream(30);
-      const canvasTrack = canvasStream.getVideoTracks()[0];
-
-      if (canvasTrack) {
-        localStream.addTrack(canvasTrack);
-
-        // Replace in PeerConnection
-        if (currentCall && currentCall.peerConnection) {
-          const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
-          if (sender) sender.replaceTrack(canvasTrack);
-        }
-      }
-    }
-  });
+  // 2. Manage Visibility
+  // We need to sync visibility. Since realArBtn is controlled by app logic,
+  // we'll use a MutationObserver or just override the display logic in our enterArBtn listener.
+  // Simpler: When we show realArBtn in enterArBtn listener, we show proxy instead.
 }
 
-// Call this setup
-setupArButtonListener();
+// Initialize Proxy Setup
+// We call this after DOM is ready or just here since module loads after DOM
+setupProxyArButton();
 
 // We still keep sessionend to restart camera
 renderer.xr.addEventListener('sessionend', async () => {
@@ -576,6 +609,16 @@ renderer.xr.addEventListener('sessionend', async () => {
           sender.replaceTrack(newVideoTrack);
         }
       }
+
+      // Reset UI: Show Proxy again for next time?
+      const proxyBtn = document.getElementById('proxy-ar-btn');
+      const realArBtn = document.querySelector('.custom-ar-button');
+      if (proxyBtn && realArBtn) {
+        realArBtn.style.display = 'none';
+        proxyBtn.style.display = 'flex';
+        proxyBtn.textContent = 'START AR'; // Reset text
+      }
+
     } catch (err) {
       console.error("Failed to restart camera after AR", err);
       alert("Could not restart camera.");
