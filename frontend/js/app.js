@@ -368,48 +368,46 @@ enterArBtn.addEventListener('click', () => {
 
       // Setup Proxy Click
       proxyBtn.onclick = async () => {
-        console.log("Proxy Click: Releasing Camera...");
+        console.log("Proxy Click: Starting AR and switching to canvas stream...");
 
-        // A. Stop Call Stream (localStream)
-        if (localStream) {
-          localStream.getVideoTracks().forEach(t => {
-            t.stop();
-            localStream.removeTrack(t);
-          });
-        }
-
-        // B. Stop Background Video Stream (from init)
-        // CRITICAL: This was likely holding the camera lock!
+        // A. Stop Background Video Stream (from init) - this was holding camera!
         if (video && video.srcObject) {
           const bgStream = video.srcObject;
           bgStream.getTracks().forEach(t => t.stop());
           video.srcObject = null;
         }
 
-        // C. Switch to Canvas Stream (for Reviewer)
-        try {
-          // Ensure canvas has something (it might be transparent if no AR yet, but better than nothing)
-          const canvasStream = renderer.domElement.captureStream(30);
-          const canvasTrack = canvasStream.getVideoTracks()[0];
-          if (canvasTrack && currentCall && currentCall.peerConnection) {
-            // We need to re-add a track to localStream so PeerJS knows we are still streaming?
-            // Actually localStream is global. We removed tracks from it.
-            // Let's add the canvas track to it.
-            localStream.addTrack(canvasTrack);
+        // B. Stop placeholder video track from localStream
+        const oldVideoTracks = localStream.getVideoTracks();
+        oldVideoTracks.forEach(t => {
+          t.stop();
+          localStream.removeTrack(t);
+        });
 
-            const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
-            if (sender) sender.replaceTrack(canvasTrack);
-          }
-        } catch (e) {
-          console.error("Canvas stream failed", e);
-        }
-
-        // D. Trigger Real AR
+        // C. Trigger Real AR (WebXR will now get camera access)
         setTimeout(() => {
           realArBtn.click();
           proxyBtn.style.display = 'none';
           realArBtn.style.display = 'flex';
-        }, 200); // Increased delay slightly to ensure hardware release
+
+          // D. After AR starts, switch to canvas stream for Reviewer
+          setTimeout(() => {
+            try {
+              const canvasStream = renderer.domElement.captureStream(30);
+              const canvasTrack = canvasStream.getVideoTracks()[0];
+              if (canvasTrack && currentCall && currentCall.peerConnection) {
+                localStream.addTrack(canvasTrack);
+                const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                  sender.replaceTrack(canvasTrack);
+                  console.log("Switched to AR canvas stream for reviewer");
+                }
+              }
+            } catch (e) {
+              console.error("Canvas stream switch failed", e);
+            }
+          }, 1000); // Wait for AR to initialize
+        }, 100);
       };
     }
   } else {
@@ -455,43 +453,63 @@ async function startCall(remoteId) {
   isFallbackMode = false;
 
   try {
-    // 1. Try Screen Share (Preferred for AR)
+    // 1. Try Screen Share (Preferred for Desktop)
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
       try {
         localStream = await navigator.mediaDevices.getDisplayMedia({
           video: { cursor: "always" },
           audio: true
         });
+        // Screen share successful - not fallback mode
       } catch (err) {
-        console.warn("Screen share denied/failed, trying fallback.", err);
-        throw new Error("Screen share failed"); // Trigger fallback
+        console.warn("Screen share denied/failed, using mobile mode.", err);
+        throw new Error("Screen share failed");
       }
     } else {
-      throw new Error("Screen share not supported"); // Trigger fallback
+      throw new Error("Screen share not supported");
     }
 
   } catch (err) {
-    // 2. Fallback to Camera (Back Camera preferred)
-    console.log("Falling back to camera...");
+    // 2. Mobile Fallback - DON'T use camera yet!
+    console.log("Mobile mode: Will stream canvas when AR starts");
     isFallbackMode = true;
+
+    // Create a minimal dummy stream to establish the connection
+    // We'll replace this with canvas stream when AR starts
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: true
-      });
-      alert("Mobile Mode: Camera active. When you enter AR, video will switch to AR view (lines only).");
-    } catch (camErr) {
-      console.error("Camera fallback failed", camErr);
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, 640, 480);
+      ctx.fillStyle = '#fff';
+      ctx.font = '30px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Waiting for AR...', 320, 240);
+
+      localStream = canvas.captureStream(1); // 1 fps placeholder
+
+      // Add silent audio track
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const destination = audioContext.createMediaStreamDestination();
+      const oscillator = audioContext.createOscillator();
+      oscillator.frequency.value = 0;
+      oscillator.connect(destination);
+      oscillator.start();
+      localStream.addTrack(destination.stream.getAudioTracks()[0]);
+
+      alert("Mobile Mode: Click 'Enter AR' to start. The reviewer will see your AR measurements.");
+    } catch (placeholderErr) {
+      console.error("Could not create placeholder stream", placeholderErr);
       connectBtn.textContent = "Failed";
-      alert("Could not start video. " + camErr.message);
+      alert("Connection setup failed: " + placeholderErr.message);
       return;
     }
   }
 
-  // Proceed with the obtained stream
+  // Proceed with the stream
   try {
-    localStream.getVideoTracks()[0].onended = () => endCall();
-
     const call = peer.call(remoteId, localStream);
     handleStream(call);
 
