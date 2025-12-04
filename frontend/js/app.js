@@ -507,40 +507,50 @@ function endCall() {
 }
 
 // --- AR SESSION LISTENERS (For Fallback Switching) ---
-// We need to hook into the renderer's XR session events
-// Since we can't easily access the session object before it starts, 
-// we can poll or use the 'sessionstart' event on the manager if available,
-// or just modify the ARButton logic? 
-// Actually, renderer.xr has 'sessionstart' event.
 
-renderer.xr.addEventListener('sessionstart', async () => {
-  if (isFallbackMode && currentCall && localStream) {
-    console.log("AR Started: Switching from Camera to Canvas stream");
+// We need to stop the camera *before* WebXR tries to take it.
+// The ARButton handles the session request on click.
+// We can add a 'click' listener to the ARButton that runs *first* (capturing phase or just added after?).
+// ARButton is created in init(). Let's hook it there or here if we can find it.
 
-    // 1. Stop Camera Video (to free it for WebXR)
-    const videoTrack = localStream.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.stop();
-      localStream.removeTrack(videoTrack);
-    }
+function setupArButtonListener() {
+  const arBtn = document.querySelector('.custom-ar-button');
+  if (!arBtn) return;
 
-    // 2. Capture Canvas Stream
-    // Note: 30fps. Canvas must be rendering.
-    const canvasStream = renderer.domElement.captureStream(30);
-    const canvasTrack = canvasStream.getVideoTracks()[0];
+  arBtn.addEventListener('click', async () => {
+    if (isFallbackMode && localStream) {
+      console.log("AR Button Clicked: Releasing Camera for WebXR...");
 
-    if (canvasTrack) {
-      localStream.addTrack(canvasTrack);
+      // 1. Stop Camera Tracks IMMEDIATELLY
+      // This frees the hardware for WebXR
+      localStream.getVideoTracks().forEach(track => {
+        track.stop();
+        localStream.removeTrack(track);
+      });
 
-      // 3. Replace Track in PeerConnection
-      const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
-      if (sender) {
-        sender.replaceTrack(canvasTrack);
+      // 2. Switch to Canvas Stream (so connection doesn't die)
+      // We might need to wait for the canvas to actually have content, 
+      // but we can start the stream now.
+      const canvasStream = renderer.domElement.captureStream(30);
+      const canvasTrack = canvasStream.getVideoTracks()[0];
+
+      if (canvasTrack) {
+        localStream.addTrack(canvasTrack);
+
+        // Replace in PeerConnection
+        if (currentCall && currentCall.peerConnection) {
+          const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+          if (sender) sender.replaceTrack(canvasTrack);
+        }
       }
     }
-  }
-});
+  });
+}
 
+// Call this setup
+setupArButtonListener();
+
+// We still keep sessionend to restart camera
 renderer.xr.addEventListener('sessionend', async () => {
   if (isFallbackMode && currentCall && localStream) {
     console.log("AR Ended: Switching back to Camera");
