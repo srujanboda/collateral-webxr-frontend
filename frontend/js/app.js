@@ -296,6 +296,7 @@ let myPeerId = null;
 let currentCall = null;
 let localStream = null;
 let role = null; // 'user' or 'reviewer'
+let isFallbackMode = false; // True if using Camera instead of Screen Share
 
 // Landing Page Elements
 const landingOverlay = document.getElementById('landing-overlay');
@@ -353,16 +354,9 @@ connectBtn.addEventListener('click', () => {
 
 enterArBtn.addEventListener('click', () => {
   landingOverlay.style.display = 'none';
-  // Show AR Button
   const arBtn = document.querySelector('.custom-ar-button');
   if (arBtn) arBtn.style.display = 'flex'; // Override CSS hidden
-
-  // Show Video Controls (minimized by default or expanded?)
   videoControls.style.display = 'flex';
-
-  // If user, start call now if not already? 
-  // Logic: User clicked "Connect & Start" -> Init Peer -> Connected -> Enable Enter AR.
-  // Actually, let's make "Connect & Start" just connect, and "Enter AR" is the final step.
 });
 
 // --- PEERJS LOGIC ---
@@ -385,11 +379,9 @@ function initPeer(remoteIdToCall = null) {
   peer.on('call', (call) => {
     // Incoming call (Reviewer receiving)
     if (role === 'reviewer') {
+      callStatus.textContent = "Incoming call...";
       call.answer(); // Answer empty (receive only)
       handleStream(call);
-      // Auto-enter AR or just show video?
-      // Reviewer might just want to see the video.
-      // But if they are in the app, they can see the video overlay.
     }
   });
 
@@ -401,6 +393,7 @@ function initPeer(remoteIdToCall = null) {
 
 async function startCall(remoteId) {
   connectBtn.textContent = "Connecting...";
+  isFallbackMode = false;
 
   try {
     // 1. Try Screen Share (Preferred for AR)
@@ -411,7 +404,7 @@ async function startCall(remoteId) {
           audio: true
         });
       } catch (err) {
-        console.warn("Screen share denied or failed, falling back to camera.", err);
+        console.warn("Screen share denied/failed, trying fallback.", err);
         throw new Error("Screen share failed"); // Trigger fallback
       }
     } else {
@@ -421,16 +414,17 @@ async function startCall(remoteId) {
   } catch (err) {
     // 2. Fallback to Camera (Back Camera preferred)
     console.log("Falling back to camera...");
+    isFallbackMode = true;
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: true
       });
-      alert("Screen sharing not supported/enabled. Switching to Camera view. (Reviewer may not see AR lines)");
+      alert("Mobile Mode: Camera active. When you enter AR, video will switch to AR view (lines only).");
     } catch (camErr) {
       console.error("Camera fallback failed", camErr);
-      connectBtn.textContent = "Failed (Retry)";
-      alert("Could not start video. Camera might be in use by AR. " + camErr.message);
+      connectBtn.textContent = "Failed";
+      alert("Could not start video. " + camErr.message);
       return;
     }
   }
@@ -448,7 +442,6 @@ async function startCall(remoteId) {
     enterArBtn.disabled = false;
     enterArBtn.style.cursor = 'pointer';
     enterArBtn.style.background = "#0066ff";
-    enterArBtn.style.color = "white";
   } catch (e) {
     console.error("Call setup failed", e);
     alert("Call setup failed: " + e.message);
@@ -477,7 +470,7 @@ toggleVideoUiBtn.addEventListener('click', () => {
   videoUiContent.style.display = isUiCollapsed ? 'none' : 'block';
   toggleVideoUiBtn.textContent = isUiCollapsed ? '+' : '−';
 
-  // Toggle Red Dot
+  // Toggle Green Dot
   if (isUiCollapsed && currentCall) {
     recordingIndicator.style.display = 'inline-block';
   } else {
@@ -512,3 +505,70 @@ function endCall() {
     connectBtn.style.background = "#0066ff";
   }
 }
+
+// --- AR SESSION LISTENERS (For Fallback Switching) ---
+// We need to hook into the renderer's XR session events
+// Since we can't easily access the session object before it starts, 
+// we can poll or use the 'sessionstart' event on the manager if available,
+// or just modify the ARButton logic? 
+// Actually, renderer.xr has 'sessionstart' event.
+
+renderer.xr.addEventListener('sessionstart', async () => {
+  if (isFallbackMode && currentCall && localStream) {
+    console.log("AR Started: Switching from Camera to Canvas stream");
+
+    // 1. Stop Camera Video (to free it for WebXR)
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.stop();
+      localStream.removeTrack(videoTrack);
+    }
+
+    // 2. Capture Canvas Stream
+    // Note: 30fps. Canvas must be rendering.
+    const canvasStream = renderer.domElement.captureStream(30);
+    const canvasTrack = canvasStream.getVideoTracks()[0];
+
+    if (canvasTrack) {
+      localStream.addTrack(canvasTrack);
+
+      // 3. Replace Track in PeerConnection
+      const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+      if (sender) {
+        sender.replaceTrack(canvasTrack);
+      }
+    }
+  }
+});
+
+renderer.xr.addEventListener('sessionend', async () => {
+  if (isFallbackMode && currentCall && localStream) {
+    console.log("AR Ended: Switching back to Camera");
+
+    // 1. Stop Canvas Track
+    const canvasTrack = localStream.getVideoTracks()[0];
+    if (canvasTrack) {
+      canvasTrack.stop();
+      localStream.removeTrack(canvasTrack);
+    }
+
+    // 2. Restart Camera
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const newVideoTrack = newStream.getVideoTracks()[0];
+
+      if (newVideoTrack) {
+        localStream.addTrack(newVideoTrack);
+
+        // 3. Replace Track
+        const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+        if (sender) {
+          sender.replaceTrack(newVideoTrack);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to restart camera after AR", err);
+      alert("Could not restart camera.");
+    }
+  }
+});
