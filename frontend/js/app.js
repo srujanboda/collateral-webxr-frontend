@@ -62,7 +62,8 @@ async function init() {
     }, 1000);
   });
 
-  // Video feed
+  // Video feed (disabled - causes camera conflict on mobile with WebXR)
+  // We don't need this background video anymore since AR provides the camera view
   video = document.createElement('video');
   video.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:-1;';
   video.autoplay = video.muted = video.playsInline = true;
@@ -72,9 +73,10 @@ async function init() {
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
 
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(s => { video.srcObject = s; video.play(); })
-    .catch(() => { });
+  // REMOVED: This was locking the camera and preventing WebXR from accessing it
+  // navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  //   .then(s => { video.srcObject = s; video.play(); })
+  //   .catch(() => { });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
@@ -368,23 +370,32 @@ enterArBtn.addEventListener('click', () => {
 
       // Setup Proxy Click
       proxyBtn.onclick = async () => {
-        console.log("Proxy Click: Starting AR and switching to canvas stream...");
+        console.log("Proxy Click: Requesting camera permission and starting AR...");
 
-        // A. Stop Background Video Stream (from init) - this was holding camera!
-        if (video && video.srcObject) {
-          const bgStream = video.srcObject;
-          bgStream.getTracks().forEach(t => t.stop());
-          video.srcObject = null;
-        }
-
-        // B. Stop placeholder video track from localStream
+        // A. Stop placeholder video track from localStream
         const oldVideoTracks = localStream.getVideoTracks();
         oldVideoTracks.forEach(t => {
           t.stop();
           localStream.removeTrack(t);
         });
 
-        // C. Trigger Real AR (WebXR will now get camera access)
+        // B. Request camera permission explicitly (then immediately release it for WebXR)
+        try {
+          console.log("Requesting camera permission...");
+          const permStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+          console.log("Camera permission granted, releasing for WebXR...");
+          // Stop it immediately - we just needed to get permission
+          permStream.getTracks().forEach(t => t.stop());
+        } catch (permErr) {
+          console.error("Camera permission denied:", permErr);
+          alert("Camera permission is required for AR. Please allow camera access and try again.");
+          return;
+        }
+
+        // C. Trigger Real AR (WebXR will now get camera access - no conflicts!)
+        console.log("Starting AR session...");
         setTimeout(() => {
           realArBtn.click();
           proxyBtn.style.display = 'none';
@@ -393,6 +404,7 @@ enterArBtn.addEventListener('click', () => {
           // D. After AR starts, switch to canvas stream for Reviewer
           setTimeout(() => {
             try {
+              console.log("Switching to canvas stream for reviewer...");
               const canvasStream = renderer.domElement.captureStream(30);
               const canvasTrack = canvasStream.getVideoTracks()[0];
               if (canvasTrack && currentCall && currentCall.peerConnection) {
@@ -400,14 +412,18 @@ enterArBtn.addEventListener('click', () => {
                 const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
                 if (sender) {
                   sender.replaceTrack(canvasTrack);
-                  console.log("Switched to AR canvas stream for reviewer");
+                  console.log("✓ Switched to AR canvas stream for reviewer");
+                } else {
+                  console.error("Could not find video sender");
                 }
+              } else {
+                console.error("Canvas track not available");
               }
             } catch (e) {
-              console.error("Canvas stream switch failed", e);
+              console.error("Canvas stream switch failed:", e);
             }
-          }, 1000); // Wait for AR to initialize
-        }, 100);
+          }, 2000); // Increased wait time for AR to fully initialize
+        }, 300); // Small delay after permission grant
       };
     }
   } else {
