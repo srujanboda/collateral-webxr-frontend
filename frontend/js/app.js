@@ -370,60 +370,57 @@ enterArBtn.addEventListener('click', () => {
 
       // Setup Proxy Click
       proxyBtn.onclick = async () => {
-        console.log("Proxy Click: Requesting camera permission and starting AR...");
+        console.log("Proxy Click: Switching from Camera to AR...");
 
-        // A. Stop placeholder video track from localStream
-        const oldVideoTracks = localStream.getVideoTracks();
-        oldVideoTracks.forEach(t => {
-          t.stop();
-          localStream.removeTrack(t);
-        });
-
-        // B. Request camera permission explicitly (then immediately release it for WebXR)
-        try {
-          console.log("Requesting camera permission...");
-          const permStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' }
+        // A. Stop the ACTIVE Camera Stream (Video Call)
+        // This is crucial to free the camera for WebXR
+        if (localStream) {
+          const videoTracks = localStream.getVideoTracks();
+          videoTracks.forEach(t => {
+            t.stop();
+            localStream.removeTrack(t);
           });
-          console.log("Camera permission granted, releasing for WebXR...");
-          // Stop it immediately - we just needed to get permission
-          permStream.getTracks().forEach(t => t.stop());
-        } catch (permErr) {
-          console.error("Camera permission denied:", permErr);
-          alert("Camera permission is required for AR. Please allow camera access and try again.");
-          return;
+          console.log("Stopped video call camera");
         }
 
-        // C. Trigger Real AR (WebXR will now get camera access - no conflicts!)
-        console.log("Starting AR session...");
+        // B. Trigger Real AR (WebXR will now get camera access)
+        // We don't need to request permission again because we just had it? 
+        // Actually, WebXR might need its own permission flow or just grab it.
+        // Since we released the camera, it should be free.
+
         setTimeout(() => {
           realArBtn.click();
           proxyBtn.style.display = 'none';
           realArBtn.style.display = 'flex';
 
-          // D. After AR starts, switch to canvas stream for Reviewer
+          // C. After AR starts, switch to canvas stream for Reviewer
           setTimeout(() => {
             try {
               console.log("Switching to canvas stream for reviewer...");
               const canvasStream = renderer.domElement.captureStream(30);
               const canvasTrack = canvasStream.getVideoTracks()[0];
+
               if (canvasTrack && currentCall && currentCall.peerConnection) {
                 localStream.addTrack(canvasTrack);
                 const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+
                 if (sender) {
                   sender.replaceTrack(canvasTrack);
-                  console.log("✓ Switched to AR canvas stream for reviewer");
+                  console.log("✓ Switched to AR canvas stream");
                 } else {
-                  console.error("Could not find video sender");
+                  // If no sender (because we removed tracks), we might need to addTransceiver or renegotiate?
+                  // PeerJS usually handles this if we addTrack to stream? 
+                  // Actually replaceTrack is for existing sender.
+                  // If we removed track, sender might still be there but with null track?
+                  console.warn("Sender found, replacing track...");
+                  sender.replaceTrack(canvasTrack);
                 }
-              } else {
-                console.error("Canvas track not available");
               }
             } catch (e) {
               console.error("Canvas stream switch failed:", e);
             }
-          }, 2000); // Increased wait time for AR to fully initialize
-        }, 300); // Small delay after permission grant
+          }, 1500); // Wait for AR to initialize
+        }, 300);
       };
     }
   } else {
