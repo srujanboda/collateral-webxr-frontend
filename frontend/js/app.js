@@ -401,13 +401,42 @@ function initPeer(remoteIdToCall = null) {
 
 async function startCall(remoteId) {
   connectBtn.textContent = "Connecting...";
-  try {
-    // Get screen stream
-    localStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: "always" },
-      audio: true
-    });
 
+  try {
+    // 1. Try Screen Share (Preferred for AR)
+    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+      try {
+        localStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always" },
+          audio: true
+        });
+      } catch (err) {
+        console.warn("Screen share denied or failed, falling back to camera.", err);
+        throw new Error("Screen share failed"); // Trigger fallback
+      }
+    } else {
+      throw new Error("Screen share not supported"); // Trigger fallback
+    }
+
+  } catch (err) {
+    // 2. Fallback to Camera (Back Camera preferred)
+    console.log("Falling back to camera...");
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: true
+      });
+      alert("Screen sharing not supported/enabled. Switching to Camera view. (Reviewer may not see AR lines)");
+    } catch (camErr) {
+      console.error("Camera fallback failed", camErr);
+      connectBtn.textContent = "Failed (Retry)";
+      alert("Could not start video. Camera might be in use by AR. " + camErr.message);
+      return;
+    }
+  }
+
+  // Proceed with the obtained stream
+  try {
     localStream.getVideoTracks()[0].onended = () => endCall();
 
     const call = peer.call(remoteId, localStream);
@@ -420,11 +449,9 @@ async function startCall(remoteId) {
     enterArBtn.style.cursor = 'pointer';
     enterArBtn.style.background = "#0066ff";
     enterArBtn.style.color = "white";
-
-  } catch (err) {
-    console.error(err);
-    connectBtn.textContent = "Failed (Retry)";
-    alert("Could not get screen share. " + err.message);
+  } catch (e) {
+    console.error("Call setup failed", e);
+    alert("Call setup failed: " + e.message);
   }
 }
 
