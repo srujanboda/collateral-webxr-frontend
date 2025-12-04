@@ -370,7 +370,7 @@ enterArBtn.addEventListener('click', () => {
       proxyBtn.onclick = async () => {
         console.log("Proxy Click: Releasing Camera...");
 
-        // A. Stop Camera
+        // A. Stop Call Stream (localStream)
         if (localStream) {
           localStream.getVideoTracks().forEach(t => {
             t.stop();
@@ -378,12 +378,25 @@ enterArBtn.addEventListener('click', () => {
           });
         }
 
-        // B. Switch to Canvas Stream (for Reviewer)
+        // B. Stop Background Video Stream (from init)
+        // CRITICAL: This was likely holding the camera lock!
+        if (video && video.srcObject) {
+          const bgStream = video.srcObject;
+          bgStream.getTracks().forEach(t => t.stop());
+          video.srcObject = null;
+        }
+
+        // C. Switch to Canvas Stream (for Reviewer)
         try {
+          // Ensure canvas has something (it might be transparent if no AR yet, but better than nothing)
           const canvasStream = renderer.domElement.captureStream(30);
           const canvasTrack = canvasStream.getVideoTracks()[0];
           if (canvasTrack && currentCall && currentCall.peerConnection) {
+            // We need to re-add a track to localStream so PeerJS knows we are still streaming?
+            // Actually localStream is global. We removed tracks from it.
+            // Let's add the canvas track to it.
             localStream.addTrack(canvasTrack);
+
             const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
             if (sender) sender.replaceTrack(canvasTrack);
           }
@@ -391,12 +404,12 @@ enterArBtn.addEventListener('click', () => {
           console.error("Canvas stream failed", e);
         }
 
-        // C. Trigger Real AR
+        // D. Trigger Real AR
         setTimeout(() => {
           realArBtn.click();
           proxyBtn.style.display = 'none';
           realArBtn.style.display = 'flex';
-        }, 100);
+        }, 200); // Increased delay slightly to ensure hardware release
       };
     }
   } else {
