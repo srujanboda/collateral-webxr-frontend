@@ -1,4 +1,4 @@
-// js/app.js — FINAL LAYOUT (New Line top-right, Reset bottom-left) + Wall Fix
+// js/app.js — FINAL LAYOUT (New Line top-right, Reset bottom-left)
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/webxr/ARButton.js';
@@ -48,7 +48,7 @@ async function init() {
   // AR Button
   const arButton = ARButton.createButton(renderer, {
     requiredFeatures: ['hit-test'],
-    optionalFeatures: ['dom-overlay', 'plane-detection'],
+    optionalFeatures: ['dom-overlay'],
     domOverlay: { root: document.body }
   });
   arButton.classList.add('custom-ar-button'); // Add class for control
@@ -62,6 +62,8 @@ async function init() {
     }, 1000);
   });
 
+  // Video feed (disabled - causes camera conflict on mobile with WebXR)
+  // We don't need this background video anymore since AR provides the camera view
   video = document.createElement('video');
   video.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:-1;';
   video.autoplay = video.muted = video.playsInline = true;
@@ -70,6 +72,11 @@ async function init() {
   canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0;z-index:998;';
   document.body.appendChild(canvas);
   ctx = canvas.getContext('2d');
+
+  // REMOVED: This was locking the camera and preventing WebXR from accessing it
+  // navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  //   .then(s => { video.srcObject = s; video.play(); })
+  //   .catch(() => { });
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 3));
 
@@ -260,11 +267,7 @@ function render(t, frame) {
   const session = renderer.xr.getSession();
   if (session && !hitTestSource) {
     session.requestReferenceSpace('viewer').then(refSpace => {
-      // FIXING HIT TEST CONFIG FOR WALLS
-      session.requestHitTestSource({
-        space: refSpace,
-        entityTypes: ['plane', 'point']
-      }).then(source => hitTestSource = source);
+      session.requestHitTestSource({ space: refSpace }).then(source => hitTestSource = source);
     });
   }
   if (hitTestSource && frame) {
@@ -322,113 +325,109 @@ const callStatus = document.getElementById('call-status');
 
 // --- LANDING PAGE EVENTS ---
 
-if (selectUserBtn) {
-  selectUserBtn.addEventListener('click', () => {
-    role = 'user';
-    selectUserBtn.classList.add('selected');
-    selectReviewerBtn.classList.remove('selected');
-    setupPanel.style.display = 'block';
-    setupUser.style.display = 'block';
-    setupReviewer.style.display = 'none';
-    enterArBtn.disabled = true;
-    enterArBtn.style.cursor = 'not-allowed';
-  });
-}
+selectUserBtn.addEventListener('click', () => {
+  role = 'user';
+  selectUserBtn.classList.add('selected');
+  selectReviewerBtn.classList.remove('selected');
+  setupPanel.style.display = 'block';
+  setupUser.style.display = 'block';
+  setupReviewer.style.display = 'none';
+  enterArBtn.disabled = true;
+  enterArBtn.style.cursor = 'not-allowed';
+});
 
-if (selectReviewerBtn) {
-  selectReviewerBtn.addEventListener('click', () => {
-    role = 'reviewer';
-    selectReviewerBtn.classList.add('selected');
-    selectUserBtn.classList.remove('selected');
-    setupPanel.style.display = 'block';
-    setupUser.style.display = 'none';
-    setupReviewer.style.display = 'block';
-    enterArBtn.disabled = false; // Reviewer can enter immediately if they want, or wait
-    enterArBtn.style.cursor = 'pointer';
-    initPeer(); // Auto-init for reviewer to get ID
-  });
-}
+selectReviewerBtn.addEventListener('click', () => {
+  role = 'reviewer';
+  selectReviewerBtn.classList.add('selected');
+  selectUserBtn.classList.remove('selected');
+  setupPanel.style.display = 'block';
+  setupUser.style.display = 'none';
+  setupReviewer.style.display = 'block';
+  enterArBtn.disabled = false; // Reviewer can enter immediately if they want, or wait
+  enterArBtn.style.cursor = 'pointer';
+  initPeer(); // Auto-init for reviewer to get ID
+});
 
-if (connectBtn) {
-  connectBtn.addEventListener('click', () => {
-    const remoteId = landingRemoteIdInput.value.trim();
-    if (!remoteId) return alert("Please enter Reviewer ID");
-    initPeer(remoteId);
-  });
-}
+connectBtn.addEventListener('click', () => {
+  const remoteId = landingRemoteIdInput.value.trim();
+  if (!remoteId) return alert("Please enter Reviewer ID");
+  initPeer(remoteId);
+});
 
 // Update the Enter AR listener to show Proxy instead of Real on mobile
-if (enterArBtn) {
-  enterArBtn.addEventListener('click', () => {
-    landingOverlay.style.display = 'none';
-    videoControls.style.display = 'flex';
+enterArBtn.addEventListener('click', () => {
+  landingOverlay.style.display = 'none';
+  videoControls.style.display = 'flex';
 
-    const realArBtn = document.querySelector('.custom-ar-button');
-    const proxyBtn = document.getElementById('proxy-ar-btn');
+  const realArBtn = document.querySelector('.custom-ar-button');
+  const proxyBtn = document.getElementById('proxy-ar-btn');
 
-    if (isFallbackMode) {
-      // Mobile: Show Proxy, Hide Real
-      if (proxyBtn && realArBtn) {
-        proxyBtn.style.display = 'flex';
-        realArBtn.style.display = 'none';
+  if (isFallbackMode) {
+    // Mobile: Show Proxy, Hide Real
+    if (proxyBtn && realArBtn) {
+      proxyBtn.style.display = 'flex';
+      realArBtn.style.display = 'none';
 
-        // Setup Proxy Click
-        proxyBtn.onclick = async () => {
-          console.log("Proxy Click: Switching from Camera to AR...");
+      // Setup Proxy Click
+      proxyBtn.onclick = async () => {
+        console.log("Proxy Click: Switching from Camera to AR...");
 
-          // A. Stop the ACTIVE Camera Stream (Video Call)
-          // This is crucial to free the camera for WebXR
-          if (localStream) {
-            const videoTracks = localStream.getVideoTracks();
-            videoTracks.forEach(t => {
-              t.stop();
-              localStream.removeTrack(t);
-            });
-            console.log("Stopped video call camera");
-          }
+        // A. Stop the ACTIVE Camera Stream (Video Call)
+        // This is crucial to free the camera for WebXR
+        if (localStream) {
+          const videoTracks = localStream.getVideoTracks();
+          videoTracks.forEach(t => {
+            t.stop();
+            localStream.removeTrack(t);
+          });
+          console.log("Stopped video call camera");
+        }
 
-          // B. Trigger Real AR (WebXR will now get camera access)
-          // We don't need to request permission again because we just had it? 
-          // Actually, WebXR might need its own permission flow or just grab it.
-          // Since we released the camera, it should be free.
+        // B. Trigger Real AR (WebXR will now get camera access)
+        // We don't need to request permission again because we just had it? 
+        // Actually, WebXR might need its own permission flow or just grab it.
+        // Since we released the camera, it should be free.
 
+        setTimeout(() => {
+          realArBtn.click();
+          proxyBtn.style.display = 'none';
+          realArBtn.style.display = 'flex';
+
+          // C. After AR starts, switch to canvas stream for Reviewer
           setTimeout(() => {
-            realArBtn.click();
-            proxyBtn.style.display = 'none';
-            realArBtn.style.display = 'flex';
+            try {
+              console.log("Switching to canvas stream for reviewer...");
+              const canvasStream = renderer.domElement.captureStream(30);
+              const canvasTrack = canvasStream.getVideoTracks()[0];
 
-            // C. After AR starts, switch to canvas stream for Reviewer
-            setTimeout(() => {
-              try {
-                console.log("Switching to canvas stream for reviewer...");
-                const canvasStream = renderer.domElement.captureStream(30);
-                const canvasTrack = canvasStream.getVideoTracks()[0];
+              if (canvasTrack && currentCall && currentCall.peerConnection) {
+                localStream.addTrack(canvasTrack);
+                const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
 
-                if (canvasTrack && currentCall && currentCall.peerConnection) {
-                  localStream.addTrack(canvasTrack);
-                  const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-
-                  if (sender) {
-                    sender.replaceTrack(canvasTrack);
-                    console.log("✓ Switched to AR canvas stream");
-                  } else {
-                    console.warn("Sender found, replacing track...");
-                    sender.replaceTrack(canvasTrack);
-                  }
+                if (sender) {
+                  sender.replaceTrack(canvasTrack);
+                  console.log("✓ Switched to AR canvas stream");
+                } else {
+                  // If no sender (because we removed tracks), we might need to addTransceiver or renegotiate?
+                  // PeerJS usually handles this if we addTrack to stream? 
+                  // Actually replaceTrack is for existing sender.
+                  // If we removed track, sender might still be there but with null track?
+                  console.warn("Sender found, replacing track...");
+                  sender.replaceTrack(canvasTrack);
                 }
-              } catch (e) {
-                console.error("Canvas stream switch failed:", e);
               }
-            }, 1500); // Wait for AR to initialize
-          }, 300);
-        };
-      }
-    } else {
-      // Desktop: Show Real directly
-      if (realArBtn) realArBtn.style.display = 'flex';
+            } catch (e) {
+              console.error("Canvas stream switch failed:", e);
+            }
+          }, 1500); // Wait for AR to initialize
+        }, 300);
+      };
     }
-  });
-}
+  } else {
+    // Desktop: Show Real directly
+    if (realArBtn) realArBtn.style.display = 'flex';
+  }
+});
 
 // --- PEERJS LOGIC ---
 
@@ -556,28 +555,24 @@ function handleStream(call) {
 // --- UI LOGIC ---
 
 let isUiCollapsed = false;
-if (toggleVideoUiBtn) {
-  toggleVideoUiBtn.addEventListener('click', () => {
-    isUiCollapsed = !isUiCollapsed;
-    videoUiContent.style.display = isUiCollapsed ? 'none' : 'block';
-    toggleVideoUiBtn.textContent = isUiCollapsed ? '+' : '−';
+toggleVideoUiBtn.addEventListener('click', () => {
+  isUiCollapsed = !isUiCollapsed;
+  videoUiContent.style.display = isUiCollapsed ? 'none' : 'block';
+  toggleVideoUiBtn.textContent = isUiCollapsed ? '+' : '−';
 
-    // Toggle Green Dot
-    if (isUiCollapsed && currentCall) {
-      recordingIndicator.style.display = 'inline-block';
-    } else {
-      recordingIndicator.style.display = 'none';
-    }
-  });
-}
+  // Toggle Green Dot
+  if (isUiCollapsed && currentCall) {
+    recordingIndicator.style.display = 'inline-block';
+  } else {
+    recordingIndicator.style.display = 'none';
+  }
+});
 
-if (endCallBtn) endCallBtn.addEventListener('click', endCall);
-if (closeRemoteBtn) {
-  closeRemoteBtn.addEventListener('click', () => {
-    remoteVideoContainer.style.display = 'none';
-    remoteVideo.srcObject = null;
-  });
-}
+endCallBtn.addEventListener('click', endCall);
+closeRemoteBtn.addEventListener('click', () => {
+  remoteVideoContainer.style.display = 'none';
+  remoteVideo.srcObject = null;
+});
 
 function endCall() {
   if (currentCall) {
@@ -589,19 +584,23 @@ function endCall() {
     localStream = null;
   }
 
-  if (remoteVideo) remoteVideo.srcObject = null;
-  if (remoteVideoContainer) remoteVideoContainer.style.display = 'none';
-  if (callStatus) callStatus.textContent = "Call Ended";
-  if (recordingIndicator) recordingIndicator.style.display = 'none';
+  remoteVideo.srcObject = null;
+  remoteVideoContainer.style.display = 'none';
+  callStatus.textContent = "Call Ended";
+  recordingIndicator.style.display = 'none';
 
   // Reset buttons if needed, or just leave as is.
-  if (role === 'user' && connectBtn) {
+  if (role === 'user') {
     connectBtn.textContent = "Connect & Start";
     connectBtn.style.background = "#0066ff";
   }
 }
 
 // --- AR SESSION LISTENERS (For Fallback Switching) ---
+
+// --- AR PROXY BUTTON (Mobile Resource Management) ---
+// We use a proxy button to intercept the 'Enter AR' click.
+// This ensures we release the camera *before* WebXR tries to take it.
 
 function setupProxyArButton() {
   const realArBtn = document.querySelector('.custom-ar-button');
@@ -617,6 +616,11 @@ function setupProxyArButton() {
 
   // Insert proxy
   document.body.appendChild(proxyBtn);
+
+  // 2. Manage Visibility
+  // We need to sync visibility. Since realArBtn is controlled by app logic,
+  // we'll use a MutationObserver or just override the display logic in our enterArBtn listener.
+  // Simpler: When we show realArBtn in enterArBtn listener, we show proxy instead.
 }
 
 // Initialize Proxy Setup
