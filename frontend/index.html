@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>AR Ruler</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     body {
       margin: 0;
@@ -139,15 +140,11 @@
     </div>
   </div>
 
-  <!-- PeerJS -->
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-
   <!-- Video Call UI (Initially Hidden) -->
   <div id="video-controls"
     style="position: fixed; top: 10px; left: 10px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 12px; color: white; display: none; flex-direction: column; gap: 10px; max-width: 300px; transition: all 0.3s ease;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div style="display: flex; align-items: center;">
-        <!-- <h3 style="margin: 0; font-size: 16px;">Video Call</h3> -->
         <span id="recording-indicator" class="recording-dot" style="display: none;"></span>
       </div>
       <button id="toggle-video-ui"
@@ -155,13 +152,8 @@
     </div>
 
     <div id="video-ui-content">
-      <!-- Connection panel removed from here as it's handled in landing page -->
       <div id="call-panel">
         <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-          <!-- Start Call button might not be needed if we auto-call on connect, but keeping for manual control if needed -->
-          <button id="start-call-btn"
-            style="flex: 1; padding: 8px; background: #0066ff; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Start
-            Call</button>
           <button id="end-call-btn"
             style="flex: 1; padding: 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">End
             Call</button>
