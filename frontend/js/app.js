@@ -488,10 +488,23 @@ enterArBtn.addEventListener('click', () => {
         // Actually, WebXR might need its own permission flow or just grab it.
         // Since we released the camera, it should be free.
 
+        // Hide Video Controls in AR (Switch Cam/End Call not relevant in AR session)
+        videoControls.style.display = 'none';
+
+        // Force Hide Video Element (Safety)
+        if (video) {
+          video.style.opacity = '0';
+          video.style.zIndex = '-1';
+          video.srcObject = null;
+        }
+
         setTimeout(() => {
           realArBtn.click();
           proxyBtn.style.display = 'none';
-          realArBtn.style.display = 'flex';
+
+          // ARButton usually needs 'block' to position correctly with its absolute calc()
+          realArBtn.style.display = 'block';
+          realArBtn.style.zIndex = '9999'; // Ensure top z-index
 
           // C. After AR starts, switch to canvas stream for Reviewer
           setTimeout(() => {
@@ -696,6 +709,9 @@ renderer.xr.addEventListener('sessionend', async () => {
         realArBtn.style.display = 'none';
         proxyBtn.style.display = 'flex';
         proxyBtn.textContent = 'START AR'; // Reset text
+
+        // Restore Video Controls
+        videoControls.style.display = 'flex';
       }
 
     } catch (err) {
