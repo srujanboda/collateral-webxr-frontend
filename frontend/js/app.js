@@ -55,11 +55,8 @@ async function init() {
   document.body.appendChild(arButton);
 
   arButton.addEventListener('click', () => {
-    setTimeout(() => {
-      document.querySelectorAll('button').forEach(b => {
-        if (/stop|exit/i.test(b.textContent)) b.remove();
-      });
-    }, 1000);
+    // Optional: Hide specific UI elements if needed, but DO NOT remove the Stop AR button!
+    landingOverlay.style.display = 'none';
   });
 
   // Video feed (disabled - causes camera conflict on mobile with WebXR)
@@ -281,11 +278,13 @@ function render(t, frame) {
         infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`;
       }
     } else {
-      isWallMode = true;
+      isWallMode = true; // Actually this just means no hit result or wall mode fallback?
+      // Default to hidden reticle if no surface found
       canvas.style.opacity = '0.6';
       reticle.visible = false;
       if (currentChain.points.length < 2) {
-        infoDiv.innerHTML = `<span style="color:#00ffff">WALL MODE</span> – Tap anywhere`;
+        // Show "Searching..." if we are properly in AR but found nothing
+        infoDiv.innerHTML = `<span style="color:#ffcc00">Scanning for floor...</span> Move slowly`;
       }
     }
   }
