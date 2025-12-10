@@ -275,7 +275,7 @@ function render(t, frame) {
       reticle.visible = true;
       reticle.matrix.fromArray(hits[0].getPose(renderer.xr.getReferenceSpace()).transform.matrix);
       if (currentChain.points.length < 2) {
-        infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts`;
+        infoDiv.innerHTML = `Total: <span style="color:#ff4444">0.00 ${currentUnit}</span> • 0 pts<br><small style="font-size:10px;color:lime">Debug: Hits=${hits.length} Vis=${reticle.visible} Y=${reticle.matrix.elements[13].toFixed(2)}</small>`;
       }
     } else {
       isWallMode = true; // Actually this just means no hit result or wall mode fallback?
@@ -477,8 +477,7 @@ enterArBtn.addEventListener('click', () => {
 
           // Hide Video Element
           if (video) {
-            video.style.opacity = '0';
-            video.style.zIndex = '-1';
+            video.style.display = 'none'; // Force remove from layout
             video.srcObject = null;
           }
         }
@@ -690,6 +689,7 @@ renderer.xr.addEventListener('sessionend', async () => {
         // SHOW LOCAL VIDEO AGAIN
         if (video) {
           video.srcObject = localStream; // localStream now has new track
+          video.style.display = 'block'; // Restore display
           video.style.opacity = '1';
           video.style.zIndex = '1';
           video.play().catch(e => console.error("Video play failed", e));
