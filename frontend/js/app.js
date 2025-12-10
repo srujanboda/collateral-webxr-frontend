@@ -385,6 +385,14 @@ async function startCall(remoteId) {
     // Success
     console.log("Camera started successfully");
 
+    // SHOW LOCAL VIDEO (User Self-View)
+    if (video) {
+      video.srcObject = localStream;
+      video.style.opacity = '1';
+      video.style.zIndex = '1'; // Ensure it's above background but below UI
+      video.play().catch(e => console.error("Video play failed", e));
+    }
+
   } catch (err) {
     console.error("Camera start failed", err);
     connectBtn.textContent = "Failed";
@@ -467,6 +475,13 @@ enterArBtn.addEventListener('click', () => {
             localStream.removeTrack(t);
           });
           console.log("Stopped video call camera");
+
+          // Hide Video Element
+          if (video) {
+            video.style.opacity = '0';
+            video.style.zIndex = '-1';
+            video.srcObject = null;
+          }
         }
 
         // B. Trigger Real AR (WebXR will now get camera access)
@@ -659,6 +674,14 @@ renderer.xr.addEventListener('sessionend', async () => {
 
       if (newVideoTrack) {
         localStream.addTrack(newVideoTrack);
+
+        // SHOW LOCAL VIDEO AGAIN
+        if (video) {
+          video.srcObject = localStream; // localStream now has new track
+          video.style.opacity = '1';
+          video.style.zIndex = '1';
+          video.play().catch(e => console.error("Video play failed", e));
+        }
 
         // 3. Replace Track
         const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
