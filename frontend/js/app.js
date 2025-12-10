@@ -321,10 +321,96 @@ const remoteVideoContainer = document.getElementById('remote-video-container');
 const remoteVideo = document.getElementById('remote-video');
 const closeRemoteBtn = document.getElementById('close-remote-btn');
 const endCallBtn = document.getElementById('end-call-btn');
-const callStatus = document.getElementById('call-status');
+const switchCamBtn = document.getElementById('switch-cam-btn');
+let currentFacingMode = 'environment'; // Default to back camera
 
-// --- LANDING PAGE EVENTS ---
+switchCamBtn.addEventListener('click', async () => {
+  if (!localStream) return;
 
+  // Toggle Mode
+  currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+  console.log("Switching camera to:", currentFacingMode);
+
+  // Stop current video track
+  const videoTrack = localStream.getVideoTracks()[0];
+  if (videoTrack) {
+    videoTrack.stop();
+    localStream.removeTrack(videoTrack);
+  }
+
+  // Get new stream
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode },
+      audio: true
+    });
+    const newVideoTrack = newStream.getVideoTracks()[0];
+
+    // Add to local stream (keep audio)
+    localStream.addTrack(newVideoTrack);
+
+    // Replace in Peer Connection
+    if (currentCall && currentCall.peerConnection) {
+      const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+      if (sender) {
+        sender.replaceTrack(newVideoTrack);
+      }
+    }
+
+    // Update local video preview if we had one (we don't effectively, but good practice)
+    // video.srcObject = localStream; 
+
+  } catch (err) {
+    console.error("Failed to switch camera", err);
+    alert("Could not switch camera: " + err.message);
+    // Revert logic could be added here
+  }
+});
+
+
+async function startCall(remoteId) {
+  connectBtn.textContent = "Connecting...";
+  // Always treat as fallback/mobile mode since we rely on getUserMedia and need AR switching
+  isFallbackMode = true;
+
+  try {
+    // 1. Camera-First Approach (No Screen Share)
+    console.log(`Starting video call with ${currentFacingMode} camera...`);
+
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode },
+      audio: true
+    });
+
+    // Success
+    console.log("Camera started successfully");
+
+  } catch (err) {
+    console.error("Camera start failed", err);
+    connectBtn.textContent = "Failed";
+    alert("Could not start camera: " + err.name + "\n\nPlease ensure camera permissions are allowed.");
+    throw err;
+  }
+
+  // Proceed with the stream
+  try {
+    const call = peer.call(remoteId, localStream);
+    handleStream(call);
+
+    // Enable Enter AR button
+    connectBtn.textContent = "Connected!";
+    connectBtn.style.background = "#28a745";
+    enterArBtn.disabled = false;
+    enterArBtn.style.cursor = 'pointer';
+    enterArBtn.style.background = "#0066ff";
+
+    alert("Video Call Active! You can now switch cameras or click 'Enter AR' to measure.");
+
+  } catch (e) {
+    console.error("Call setup failed", e);
+    alert("Call setup failed: " + e.message);
+  }
+}
 selectUserBtn.addEventListener('click', () => {
   role = 'user';
   selectUserBtn.classList.add('selected');
@@ -461,82 +547,7 @@ function initPeer(remoteIdToCall = null) {
   });
 }
 
-async function startCall(remoteId) {
-  connectBtn.textContent = "Connecting...";
-  isFallbackMode = false;
 
-  try {
-    // 1. Try Screen Share (Preferred for Desktop)
-    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-      try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: "always" },
-          audio: true
-        });
-        // Screen share successful - not fallback mode
-      } catch (err) {
-        console.warn("Screen share denied/failed, using mobile mode.", err);
-        throw new Error("Screen share failed");
-      }
-    } else {
-      throw new Error("Screen share not supported");
-    }
-
-  } catch (err) {
-    // 2. Mobile Fallback - DON'T use camera yet!
-    console.log("Mobile mode: Will stream canvas when AR starts");
-    isFallbackMode = true;
-
-    // Create a minimal dummy stream to establish the connection
-    // We'll replace this with canvas stream when AR starts
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 640;
-      canvas.height = 480;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, 640, 480);
-      ctx.fillStyle = '#fff';
-      ctx.font = '30px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('Waiting for AR...', 320, 240);
-
-      localStream = canvas.captureStream(1); // 1 fps placeholder
-
-      // Add silent audio track
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const destination = audioContext.createMediaStreamDestination();
-      const oscillator = audioContext.createOscillator();
-      oscillator.frequency.value = 0;
-      oscillator.connect(destination);
-      oscillator.start();
-      localStream.addTrack(destination.stream.getAudioTracks()[0]);
-
-      alert("Mobile Mode: Click 'Enter AR' to start. The reviewer will see your AR measurements.");
-    } catch (placeholderErr) {
-      console.error("Could not create placeholder stream", placeholderErr);
-      connectBtn.textContent = "Failed";
-      alert("Connection setup failed: " + placeholderErr.message);
-      return;
-    }
-  }
-
-  // Proceed with the stream
-  try {
-    const call = peer.call(remoteId, localStream);
-    handleStream(call);
-
-    // Enable Enter AR button
-    connectBtn.textContent = "Connected!";
-    connectBtn.style.background = "#28a745";
-    enterArBtn.disabled = false;
-    enterArBtn.style.cursor = 'pointer';
-    enterArBtn.style.background = "#0066ff";
-  } catch (e) {
-    console.error("Call setup failed", e);
-    alert("Call setup failed: " + e.message);
-  }
-}
 
 function handleStream(call) {
   currentCall = call;
@@ -641,7 +652,9 @@ renderer.xr.addEventListener('sessionend', async () => {
 
     // 2. Restart Camera
     try {
-      const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      // Default to environment after AR, as they were just measuring
+      currentFacingMode = 'environment';
+      const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode } });
       const newVideoTrack = newStream.getVideoTracks()[0];
 
       if (newVideoTrack) {
